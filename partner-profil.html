@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Partnerprofil | Partnerportal</title>
+  <link rel="stylesheet" href="portal-header.css?v=20260604-03">
+  <style>
+    :root {
+      --navy: #15243a;
+      --green: #087563;
+      --line: #d6dde3;
+      --muted: #5d6b80;
+      --page: #f5f7f9;
+      --surface: #fff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--navy);
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    .profile-page {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 30px 24px 64px;
+    }
+
+    .back-link {
+      display: inline-block;
+      margin-bottom: 18px;
+      color: var(--green);
+      font-size: 14px;
+      font-weight: bold;
+      text-decoration: none;
+    }
+
+    .back-link:hover { text-decoration: underline; }
+
+    .profile-hero,
+    .profile-panel {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .cover {
+      height: 150px;
+      background: linear-gradient(135deg, #263764, #8ab9a2);
+    }
+
+    .profile-main {
+      margin-top: -56px;
+      padding: 0 24px 24px;
+      text-align: center;
+    }
+
+    .avatar {
+      display: flex;
+      width: 112px;
+      height: 112px;
+      margin: 0 0 0 0;
+      align-items: center;
+      justify-content: center;
+      border: 6px solid #fff;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
+      color: #fff;
+      font-size: 42px;
+      font-weight: bold;
+    }
+
+    h1 {
+      margin: 16px 0 5px;
+      font-size: 34px;
+    }
+
+    .profile-main p,
+    .biography {
+      color: var(--muted);
+    }
+
+    .profile-panel {
+      margin-top: 18px;
+      padding: 24px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 24px;
+    }
+
+    .biography {
+      margin: 20px 0 18px;
+      line-height: 1.6;
+    }
+
+    .contact-list {
+      margin: 0;
+    }
+
+    .contact-list div {
+      padding: 12px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    dt {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    dd {
+      margin: 5px 0 0;
+      line-height: 1.4;
+    }
+
+    a {
+      color: var(--green);
+      text-underline-offset: 3px;
+    }
+
+    @media (max-width: 580px) {
+      .profile-page { padding: 20px 16px 48px; }
+      .cover { height: 120px; }
+      h1 { font-size: 28px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="profile-page">
+    <a class="back-link" href="partnere.html">&larr; Tilbage til partnere</a>
+
+    <section class="profile-hero">
+      <div class="cover"></div>
+      <div class="profile-main">
+        <div class="avatar" id="avatar" aria-hidden="true">?</div>
+        <h1 id="name">Henter partnerprofil...</h1>
+        <p id="company-heading"></p>
+      </div>
+    </section>
+
+    <section class="profile-panel" id="profile-panel">
+      <h2>Pr&aelig;senterer sin virksomhed</h2>
+      <p class="biography" id="biography"></p>
+
+      <dl class="contact-list">
+        <div>
+          <dt>Navn</dt>
+          <dd><a id="linkedin-name" target="_blank" rel="noopener"></a></dd>
+        </div>
+        <div>
+          <dt>Brancher</dt>
+          <dd id="labels"></dd>
+        </div>
+        <div id="company-row">
+          <dt>Virksomhed</dt>
+          <dd><a id="company-link" target="_blank" rel="noopener"></a></dd>
+        </div>
+        <div>
+          <dt>E-mail</dt>
+          <dd><a id="email"></a></dd>
+        </div>
+        <div>
+          <dt>Telefon</dt>
+          <dd><a id="phone"></a></dd>
+        </div>
+      </dl>
+    </section>
+  </main>
+
+  <script src="portal-data.js?v=20260604-02"></script><script src="portal-header.js?v=20260604-02"></script>
+  <script>
+    var parameters = new URLSearchParams(window.location.search);
+    var id = parameters.get("id");
+    var groupId = parameters.get("groupId");
+    PortalData.requireSession().then(function () {
+      return parameters.get("me") === "1" ? PortalData.myProfile() : PortalData.partnerDetail(id, groupId);
+    }).then(function (partner) {
+      if (!partner) throw new Error("Partner not found.");
+      document.title = partner.name + " | Partnerportal";
+      document.getElementById("avatar").textContent = partner.name.charAt(0);
+      document.getElementById("name").textContent = partner.name;
+      document.getElementById("company-heading").textContent = partner.company || "";
+      document.getElementById("biography").textContent = partner.biography || "";
+      document.getElementById("labels").textContent = partner.labels || "";
+
+      var linkedinName = document.getElementById("linkedin-name");
+      linkedinName.textContent = partner.name;
+      if (partner.linkedin) linkedinName.href = partner.linkedin;
+      else linkedinName.removeAttribute("href");
+
+      var companyLink = document.getElementById("company-link");
+      if (partner.company) {
+        companyLink.textContent = partner.company;
+        if (partner.companyUrl) companyLink.href = partner.companyUrl;
+        else companyLink.removeAttribute("href");
+      } else {
+        document.getElementById("company-row").style.display = "none";
+      }
+
+      var email = document.getElementById("email");
+      email.textContent = partner.email;
+      email.href = "mailto:" + partner.email;
+
+      var phone = document.getElementById("phone");
+      phone.textContent = partner.phone || "";
+      phone.href = "tel:" + (partner.phone || "").replace(/\s/g, "");
+    }).catch(function () {
+      document.getElementById("avatar").textContent = "!";
+      document.getElementById("name").textContent = "Partneren kunne ikke hentes";
+      document.getElementById("company-heading").textContent = "Profilen findes ikke, eller du har ikke adgang til den.";
+      document.getElementById("profile-panel").style.display = "none";
+    });
+  </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+

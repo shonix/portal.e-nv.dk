@@ -1,0 +1,313 @@
+<style>
+  .partner-portal {
+    --navy: #15243a;
+    --green: #087563;
+    --line: #d6dde3;
+    --muted: #5d6b80;
+    --page: #f5f7f9;
+    --surface: #fff;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 48px 24px 64px;
+    background: var(--page);
+    color: var(--navy);
+    font-family: Arial, Helvetica, sans-serif;
+  }
+
+  .partner-portal * {
+    box-sizing: border-box;
+  }
+
+  .portal-intro {
+    margin-bottom: 30px;
+  }
+
+  .eyebrow {
+    margin: 0 0 6px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: bold;
+    text-transform: uppercase;
+  }
+
+  .portal-title {
+    margin: 0;
+    font-size: 36px;
+    line-height: 1.1;
+  }
+
+  .portal-description {
+    margin: 8px 0 0;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .admin-link {
+    display: none;
+    margin-top: 14px;
+    color: var(--green);
+    font-size: 14px;
+    font-weight: bold;
+    text-underline-offset: 3px;
+  }
+
+  .member-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+  }
+
+  .portal-grid {
+    display: grid;
+    grid-template-columns: minmax(0, .95fr) minmax(0, 1.15fr);
+    gap: 32px;
+  }
+
+  .portal-panel {
+    min-width: 0;
+  }
+
+  .portal-panel:nth-child(2) {
+    position: relative;
+  }
+
+  .portal-heading {
+    margin: 0 0 16px;
+    color: var(--navy);
+    font-size: 22px;
+    letter-spacing: .5px;
+  }
+
+  .group-list,
+  .meeting-list {
+    display: grid;
+    gap: 14px;
+  }
+
+  .meeting-list {
+    grid-column: 1 / -1;
+  }
+
+  .group-list {
+    margin-top: 0;
+  }
+
+  .group-card {
+    display: grid;
+    grid-template-columns: 56px minmax(0, 1fr);
+    gap: 16px;
+    align-items: center;
+    padding: 18px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+    color: inherit;
+    text-decoration: none;
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+
+  a.group-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .08);
+  }
+
+  .group-avatar {
+    display: flex;
+    width: 56px;
+    height: 56px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--green);
+    color: #fff;
+    font-size: 22px;
+    font-weight: bold;
+  }
+
+  .group-card h3,
+  .meeting h3 {
+    margin: 0 0 6px;
+    font-size: 18px;
+  }
+
+  .group-card h3 {
+    color: var(--green);
+  }
+
+  .portal-meta {
+    margin: 3px 0;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.4;
+  }
+
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    position: absolute;
+    top: 0;
+    right: 0;
+    margin: 0;
+    justify-content: flex-end;
+  }
+
+  .filter-button {
+    padding: 8px 13px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--navy);
+    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    transition: background .15s ease, border-color .15s ease, color .15s ease;
+  }
+
+  .filter-button:hover,
+  .filter-button.active {
+    border-color: var(--green);
+    background: var(--green);
+    color: #fff;
+  }
+
+  .meeting {
+    padding: 17px 18px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface);
+  }
+
+  .meeting-topline {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .status {
+    flex-shrink: 0;
+    padding: 4px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: .4px;
+    text-transform: uppercase;
+  }
+
+  .upcoming { background: #e5f4ef; color: var(--green); }
+  .held { background: #edf0f2; color: #58636c; }
+  .cancelled { background: #fbe8e8; color: #a63a3a; }
+
+  @media (max-width: 800px) {
+    .portal-grid {
+      grid-template-columns: 1fr;
+      gap: 34px;
+    }
+
+    .group-list {
+      margin-top: 0;
+    }
+  }
+
+  @media (max-width: 680px) {
+    .filters {
+      position: static;
+      margin-bottom: 16px;
+      justify-content: flex-start;
+    }
+  }
+
+  @media (max-width: 580px) {
+    .partner-portal {
+      padding: 32px 18px 48px;
+    }
+
+    .portal-title {
+      font-size: 30px;
+    }
+  }
+</style>
+
+<div class="partner-portal">
+  <header class="portal-intro">
+    <p class="eyebrow">Netv&aelig;rk</p>
+    <h1 class="portal-title">Partnerportal</h1>
+    <p class="portal-description">Find dine netv&aelig;rksgrupper og hold dig opdateret om kommende m&oslash;der.</p>
+  </header>
+
+  <div class="portal-grid">
+    <section class="portal-panel">
+      <h2 class="portal-heading">Grupper</h2>
+
+      <div class="group-list" id="group-list"></div>
+    </section>
+
+    <section class="portal-panel">
+      <h2 class="portal-heading">&Aring;rets m&oslash;der</h2>
+
+      <div class="filters">
+        <button class="filter-button active" type="button" data-filter="all">Alle</button>
+        <button class="filter-button" type="button" data-filter="upcoming">Kommende</button>
+        <button class="filter-button" type="button" data-filter="held">Afholdte</button>
+        <button class="filter-button" type="button" data-filter="cancelled">Aflyste</button>
+      </div>
+
+      <div class="meeting-list" id="meeting-list"></div>
+    </section>
+  </div>
+</div>
+
+<script src="portal-data.js?v=20260604-02"></script><script src="portal-header.js?v=20260604-02"></script>
+<script>
+  var statusLabels = { upcoming: "Kommende", held: "Afholdt", cancelled: "Aflyst" };
+  Promise.all([PortalData.groups(), PortalData.session()]).then(async function (results) {
+    var groups = results[0], session = results[1], accessible = [];
+    if (session.loggedIn) accessible = await PortalData.myGroups();
+    var allowed = accessible.map(function (group) { return group.id; });
+    document.getElementById("group-list").innerHTML = groups.map(function(group,index) {
+      var tag = allowed.includes(group.id) ? 'a href="gruppe.html?id='+encodeURIComponent(group.id)+'"' : "div";
+      return '<'+tag+' class="group-card"><span class="group-avatar">'+(index+1)+'</span><span><h3>'+PortalData.escape(group.name)+'</h3><p class="portal-meta">'+PortalData.escape(group.address||"")+'</p><p class="portal-meta">'+group.memberCount+' medlemmer</p></span></'+(tag.startsWith("a ")?"a":"div")+'>';
+    }).join("");
+  });
+  PortalData.meetings().then(function (meetings) {
+    document.getElementById("meeting-list").innerHTML = meetings.map(function (meeting) {
+    var date = new Date(meeting.date + "T00:00:00").toLocaleDateString("da-DK", { day: "numeric", month: "long", year: "numeric" });
+      return '<a class="meeting" data-status="' + PortalData.escape(meeting.status) + '" href="moede.html?id=' + encodeURIComponent(meeting.slug) + '" style="display:block;color:inherit;text-decoration:none">' +
+        '<div class="meeting-topline"><h3>' + PortalData.escape(meeting.title) + '</h3><span class="status ' + PortalData.escape(meeting.status) + '">' + PortalData.escape(statusLabels[meeting.status]) + '</span></div>' +
+        '<p class="portal-meta">' + date + ' &middot; kl. ' + PortalData.escape(meeting.time) + '</p><p class="portal-meta">' + PortalData.escape(meeting.address) + '</p></a>';
+    }).join("");
+  }).catch(function () {
+    document.getElementById("meeting-list").innerHTML = '<p class="portal-meta">M&oslash;der kunne ikke hentes fra databasen.</p>';
+  });
+
+  document.querySelectorAll(".partner-portal .filter-button").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var portal = button.closest(".partner-portal");
+      var selected = button.dataset.filter;
+
+      portal.querySelectorAll(".filter-button").forEach(function (item) {
+        item.classList.remove("active");
+      });
+
+      button.classList.add("active");
+
+      portal.querySelectorAll(".meeting").forEach(function (meeting) {
+        meeting.style.display =
+          selected === "all" || meeting.dataset.status === selected
+            ? "block"
+            : "none";
+      });
+    });
+  });
+</script>
+
+
+
+
+
+
+
+
+
+

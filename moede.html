@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>M&oslash;de | Partnerportal</title>
+  <link rel="stylesheet" href="portal-header.css?v=20260604-03">
+  <style>
+    :root { --navy:#15243a; --green:#087563; --line:#d6dde3; --muted:#5d6b80; --page:#f5f7f9; --surface:#fff; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--page); color:var(--navy); font-family:Arial,Helvetica,sans-serif; }
+    main { max-width:820px; margin:auto; padding:40px 24px 64px; }
+    a { color:var(--green); text-underline-offset:3px; }
+    .card { margin-top:18px; overflow:hidden; border:1px solid var(--line); border-radius:8px; background:var(--surface); }
+    .cover { padding:24px; background:linear-gradient(135deg,#263764,#8ab9a2); color:#fff; }
+    h1 { margin:0 0 12px; font-size:30px; }
+    .date-line { display:flex; flex-wrap:wrap; gap:10px 24px; font-weight:bold; }
+    .address { margin:12px 0 0; }
+    .details { padding:8px 24px 20px; }
+    .row { display:grid; grid-template-columns:32px minmax(0,1fr); gap:12px; padding:16px 0; border-bottom:1px solid var(--line); }
+    .row:last-child { border-bottom:0; }
+    .icon { width:24px; height:24px; fill:none; stroke:var(--green); stroke-linecap:round; stroke-linejoin:round; stroke-width:1.8; }
+    h2 { margin:0 0 5px; font-size:15px; letter-spacing:.5px; text-transform:uppercase; }
+    p { margin:0; color:var(--muted); line-height:1.5; }
+  </style>
+</head>
+<body>
+  <main>
+    <a href="index.html">&larr; Tilbage til partnerportalen</a>
+    <article class="card">
+      <header class="cover">
+        <h1 id="title"></h1>
+        <div class="date-line"><span id="date"></span><span id="time"></span></div>
+        <p class="address" id="address"></p>
+      </header>
+      <section class="details" id="details"></section>
+    </article>
+  </main>
+  <script src="portal-data.js?v=20260604-02"></script><script src="portal-header.js?v=20260604-02"></script>
+  <script>
+    var icons = {
+      partners:'<svg class="icon" viewBox="0 0 24 24"><path d="M16 20v-1.5a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4V20"/><circle cx="9" cy="7" r="3"/><path d="M22 20v-1.5a4 4 0 0 0-3-3.85M16 4.15a3 3 0 0 1 0 5.7"/></svg>',
+      program:'<svg class="icon" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
+      location:'<svg class="icon" viewBox="0 0 24 24"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="2.5"/></svg>',
+      files:'<svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>',
+      guests:'<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"/><path d="M5.5 21a6.5 6.5 0 0 1 13 0"/></svg>',
+      invite:'<svg class="icon" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.1-.1l-2 2A5 5 0 0 0 12 20l1.1-1.1"/></svg>'
+    };
+    var labels = { partners:"Partnere", program:"Program", location:"Lokation", files:"Filer", guests:"G\u00e6ster", invite:"Invi-link" };
+    var id = new URLSearchParams(location.search).get("id");
+    PortalData.meetings().then(function (meetings) { return meetings.find(function (meeting) { return meeting.id === id || meeting.slug === id; }); }).then(function (meeting) {
+      if (!meeting) throw new Error("Meeting not found.");
+      document.title = meeting.title + " | Partnerportal";
+      document.getElementById("title").textContent = meeting.title;
+      document.getElementById("date").textContent = new Date(meeting.date + "T00:00:00").toLocaleDateString("da-DK", { day:"numeric", month:"long", year:"numeric" });
+      document.getElementById("time").textContent = "kl. " + meeting.time;
+      document.getElementById("address").textContent = meeting.address;
+      document.getElementById("details").innerHTML = Object.keys(labels).map(function (key) {
+        return '<div class="row">' + icons[key] + '<div><h2>' + labels[key] + '</h2><p>' + PortalData.escape(meeting[key] || "Ikke tilf\u00f8jet endnu") + '</p></div></div>';
+      }).join("");
+    }).catch(function () {
+      document.getElementById("title").textContent = "M\u00f8det kunne ikke hentes";
+    });
+  </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+

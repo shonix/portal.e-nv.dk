@@ -1,0 +1,3 @@
+ALTER TABLE partners
+    ALTER COLUMN industry DROP NOT NULL,
+    ALTER COLUMN company DROP NOT NULL;

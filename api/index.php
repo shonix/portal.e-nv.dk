@@ -1,0 +1,646 @@
+<?php
+declare(strict_types=1);
+require __DIR__ . '/bootstrap.php';
+
+$action = $_GET['action'] ?? '';
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+$userId = (int) ($_SESSION['user_id'] ?? 0);
+
+function required(array $body, array $fields): void
+{
+    foreach ($fields as $field) {
+        if (trim((string) ($body[$field] ?? '')) === '') respond(['error' => "Missing required field: $field."], 422);
+    }
+}
+
+function nullable(array $body, string $field): ?string
+{
+    $value = trim((string) ($body[$field] ?? ''));
+    return $value === '' ? null : $value;
+}
+
+if ($method === 'POST' && $action === 'login') {
+    $body = requestBody();
+    $statement = $pdo->prepare('SELECT id, email, password_hash, role FROM users WHERE email = :email');
+    $statement->execute(['email' => strtolower(trim((string) ($body['email'] ?? '')))]);
+    $user = $statement->fetch();
+    if (!$user || !password_verify((string) ($body['password'] ?? ''), $user['password_hash'])) {
+        respond(['error' => 'Invalid email or password.'], 401);
+    }
+    session_regenerate_id(true);
+    $_SESSION['user_id'] = (int) $user['id'];
+    $_SESSION['role'] = $user['role'];
+    respond(['ok' => true, 'role' => $user['role']]);
+}
+
+if ($method === 'POST' && $action === 'register') {
+    $body = requestBody();
+    required($body, ['token', 'password']);
+    if (strlen((string) $body['password']) < 10) {
+        respond(['error' => 'Password must contain at least 10 characters.'], 422);
+    }
+    $invite = $pdo->prepare(
+        'SELECT id, email FROM invitations
+         WHERE token_hash = :token_hash AND used_at IS NULL AND expires_at > NOW()
+         FOR UPDATE'
+    );
+    $pdo->beginTransaction();
+    $invite->execute(['token_hash' => hash('sha256', (string) $body['token'])]);
+    $invitation = $invite->fetch();
+    if (!$invitation) {
+        $pdo->rollBack();
+        respond(['error' => 'Invitation is invalid or has expired.'], 422);
+    }
+    $statement = $pdo->prepare(
+        "INSERT INTO users (email, password_hash, role) VALUES (:email, :password_hash, 'member')
+         RETURNING id, role"
+    );
+    try {
+        $statement->execute([
+            'email' => strtolower(trim((string) $invitation['email'])),
+            'password_hash' => password_hash((string) $body['password'], PASSWORD_DEFAULT),
+        ]);
+    } catch (PDOException $error) {
+        $pdo->rollBack();
+        if ($error->getCode() === '23505') respond(['error' => 'An account with this email already exists.'], 409);
+        throw $error;
+    }
+    $user = $statement->fetch();
+    $pdo->prepare('UPDATE invitations SET used_at = NOW() WHERE id = :id')->execute(['id' => (int) $invitation['id']]);
+    $pdo->commit();
+    session_regenerate_id(true);
+    $_SESSION['user_id'] = (int) $user['id'];
+    $_SESSION['role'] = $user['role'];
+    respond(['ok' => true, 'role' => $user['role']], 201);
+}
+
+if ($method === 'GET' && $action === 'admin-invitations') {
+    requireAdmin();
+    respond(['invitations' => $pdo->query(
+        'SELECT id::text, email, expires_at::text AS "expiresAt", used_at::text AS "usedAt", created_at::text AS "createdAt"
+         FROM invitations ORDER BY created_at DESC'
+    )->fetchAll()]);
+}
+
+if ($method === 'POST' && $action === 'admin-invitations') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['email']);
+    $email = strtolower(trim((string) $body['email']));
+    $token = bin2hex(random_bytes(32));
+    $statement = $pdo->prepare(
+        "INSERT INTO invitations (email, token_hash, expires_at)
+         VALUES (:email, :token_hash, NOW() + INTERVAL '7 days')
+         RETURNING id::text, email, expires_at::text AS \"expiresAt\""
+    );
+    $statement->execute([
+        'email' => $email,
+        'token_hash' => hash('sha256', $token),
+    ]);
+    $invitation = $statement->fetch();
+    $invitation['url'] = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'portal.e-nv.dk') . '/registrer.html?token=' . urlencode($token);
+    $host = (string) ($_SERVER['HTTP_HOST'] ?? 'portal.e-nv.dk');
+    $domain = preg_replace('/^portal\./', '', $host) ?: 'e-nv.dk';
+    $from = (string) ($config['mail_from'] ?? ('noreply@' . $domain));
+    $subject = 'Invitation til Ejendomsnetværkets partnerportal';
+    $message = "Hej\n\nDu er blevet inviteret til Ejendomsnetværkets partnerportal.\n\nOpret din konto her:\n" .
+        $invitation['url'] .
+        "\n\nLinket udløber efter 7 dage.\n\nVenlig hilsen\nEjendomsnetværket";
+    $headers = [
+        'From: Ejendomsnetværket <' . $from . '>',
+        'Reply-To: ' . $from,
+        'MIME-Version: 1.0',
+        'Content-Type: text/plain; charset=UTF-8',
+    ];
+    $invitation['emailSent'] = mail($email, $subject, $message, implode("\r\n", $headers));
+    respond(['invitation' => $invitation], 201);
+}
+
+if ($method === 'POST' && $action === 'logout') {
+    session_destroy();
+    respond(['ok' => true]);
+}
+
+if ($method === 'GET' && $action === 'session') {
+    $email = null;
+    if (isset($_SESSION['user_id'])) {
+        $statement = $pdo->prepare('SELECT email FROM users WHERE id = :id');
+        $statement->execute(['id' => (int) $_SESSION['user_id']]);
+        $email = $statement->fetchColumn() ?: null;
+    }
+    respond(['loggedIn' => isset($_SESSION['user_id']), 'id' => isset($_SESSION['user_id']) ? (string) $_SESSION['user_id'] : null, 'role' => $_SESSION['role'] ?? null, 'email' => $email]);
+}
+
+if ($method === 'GET' && $action === 'groups') {
+    respond(['groups' => $pdo->query(
+        'SELECT g.id::text, g.name, g.address, COUNT(gm.user_id)::int AS "memberCount"
+         FROM groups g LEFT JOIN group_members gm ON gm.group_id = g.id
+         GROUP BY g.id ORDER BY g.name'
+    )->fetchAll()]);
+}
+
+if ($method === 'GET' && $action === 'my-groups') {
+    requireLogin();
+    if (($_SESSION['role'] ?? null) === 'admin') {
+        respond(['groups' => $pdo->query('SELECT id::text, name, address FROM groups ORDER BY name')->fetchAll()]);
+    }
+    $statement = $pdo->prepare(
+        'SELECT g.id::text, g.name, g.address
+         FROM groups g JOIN group_members gm ON gm.group_id = g.id
+         WHERE gm.user_id = :user_id ORDER BY g.name'
+    );
+    $statement->execute(['user_id' => $userId]);
+    respond(['groups' => $statement->fetchAll()]);
+}
+
+if ($method === 'GET' && $action === 'meetings') {
+    respond(['meetings' => $pdo->query(
+        'SELECT m.id::text, m.slug, m.title, m.meeting_date::text AS "date",
+                to_char(m.meeting_time, \'HH24:MI\') AS "time", m.address, m.status,
+                m.partners_text AS "partners", m.program_text AS "program",
+                m.location_text AS "location", m.files_text AS "files",
+                m.guests_text AS "guests", m.invite_text AS "invite",
+                m.group_id::text AS "groupId", g.name AS "groupName"
+         FROM meetings m LEFT JOIN groups g ON g.id = m.group_id
+         ORDER BY m.meeting_date DESC, m.meeting_time DESC'
+    )->fetchAll()]);
+}
+
+if ($method === 'GET' && $action === 'labels') {
+    requireLogin();
+    respond(['labels' => $pdo->query('SELECT id::text, name FROM partner_labels ORDER BY name')->fetchAll()]);
+}
+
+if ($method === 'GET' && $action === 'partners') {
+    requireLogin();
+    if (($_SESSION['role'] ?? null) === 'admin') {
+        respond(['partners' => $pdo->query(
+            'SELECT p.id::text, p.slug, p.name, p.linkedin_url AS "linkedin", p.industry, p.company,
+                    p.company_url AS "companyUrl", p.email, p.phone, p.biography,
+                    COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels
+             FROM partners p
+             LEFT JOIN partner_profile_labels ppl ON ppl.partner_id = p.id
+             LEFT JOIN partner_labels l ON l.id = ppl.label_id
+             GROUP BY p.id ORDER BY p.name'
+        )->fetchAll()]);
+    }
+    $statement = $pdo->prepare(
+        'SELECT p.id::text, p.slug, p.name, p.linkedin_url AS "linkedin",
+                p.industry, p.company, p.company_url AS "companyUrl", p.email, p.phone, p.biography,
+                COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels
+         FROM partners p
+         JOIN users profile_owner ON profile_owner.id = p.user_id
+           OR (p.user_id IS NULL AND LOWER(TRIM(profile_owner.email)) = LOWER(TRIM(p.email)))
+         LEFT JOIN partner_profile_labels ppl ON ppl.partner_id = p.id
+         LEFT JOIN partner_labels l ON l.id = ppl.label_id
+         WHERE profile_owner.id = :owner_user_id
+            OR EXISTS (
+                SELECT 1
+                FROM group_members viewer_groups
+                JOIN group_members partner_groups ON partner_groups.group_id = viewer_groups.group_id
+                WHERE viewer_groups.user_id = :viewer_user_id
+                  AND partner_groups.user_id = profile_owner.id
+            )
+         GROUP BY p.id
+         ORDER BY p.name'
+    );
+    $statement->execute(['owner_user_id' => $userId, 'viewer_user_id' => $userId]);
+    respond(['partners' => $statement->fetchAll()]);
+}
+
+if ($method === 'GET' && $action === 'group-partners') {
+    requireLogin();
+    $groupId = (int) ($_GET['groupId'] ?? 0);
+    if ($groupId <= 0) respond(['error' => 'Group is required.'], 422);
+    if (($_SESSION['role'] ?? null) !== 'admin') {
+        $access = $pdo->prepare('SELECT 1 FROM group_members WHERE group_id = :group_id AND user_id = :user_id');
+        $access->execute(['group_id' => $groupId, 'user_id' => $userId]);
+        if (!$access->fetchColumn()) respond(['error' => 'You do not have access to this group.'], 403);
+    }
+    $group = $pdo->prepare(
+        'SELECT g.id::text, g.name, g.address, COUNT(gm.user_id)::int AS "memberCount"
+         FROM groups g LEFT JOIN group_members gm ON gm.group_id = g.id
+         WHERE g.id = :group_id GROUP BY g.id'
+    );
+    $group->execute(['group_id' => $groupId]);
+    $partners = $pdo->prepare(
+        'SELECT p.id::text, p.slug, p.name, p.linkedin_url AS "linkedin",
+                p.industry, p.company, p.company_url AS "companyUrl", p.email, p.phone, p.biography,
+                COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels
+         FROM partners p
+         JOIN users profile_owner ON profile_owner.id = p.user_id
+           OR (p.user_id IS NULL AND LOWER(TRIM(profile_owner.email)) = LOWER(TRIM(p.email)))
+         JOIN group_members gm ON gm.user_id = profile_owner.id
+         LEFT JOIN partner_profile_labels ppl ON ppl.partner_id = p.id
+         LEFT JOIN partner_labels l ON l.id = ppl.label_id
+         WHERE gm.group_id = :group_id GROUP BY p.id ORDER BY p.name'
+    );
+    $partners->execute(['group_id' => $groupId]);
+    respond(['group' => $group->fetch(), 'partners' => $partners->fetchAll()]);
+}
+
+if ($method === 'GET' && $action === 'partner-detail') {
+    requireLogin();
+    $partnerId = (int) ($_GET['id'] ?? 0);
+    $slug = trim((string) ($_GET['slug'] ?? ''));
+    if ($partnerId <= 0 && $slug === '') respond(['error' => 'Partner is required.'], 422);
+    $groupId = (int) ($_GET['groupId'] ?? 0);
+    $statement = $pdo->prepare(
+        'SELECT p.id::text, p.slug, p.name, p.linkedin_url AS "linkedin",
+                p.industry, p.company, p.company_url AS "companyUrl", p.email, p.phone, p.biography,
+                COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels
+         FROM partners p
+         JOIN users profile_owner ON profile_owner.id = p.user_id
+           OR (p.user_id IS NULL AND LOWER(TRIM(profile_owner.email)) = LOWER(TRIM(p.email)))
+         LEFT JOIN partner_profile_labels ppl ON ppl.partner_id = p.id
+         LEFT JOIN partner_labels l ON l.id = ppl.label_id
+         WHERE ((:partner_id > 0 AND p.id = :partner_id) OR (:partner_id = 0 AND p.slug = :slug))
+           AND (
+              :is_admin = 1
+              OR profile_owner.id = :owner_user_id
+              OR EXISTS (
+                  SELECT 1
+                  FROM group_members viewer_groups
+                  JOIN group_members partner_groups ON partner_groups.group_id = viewer_groups.group_id
+                  WHERE viewer_groups.user_id = :viewer_user_id
+                    AND partner_groups.user_id = profile_owner.id
+              )
+              OR (
+                  :has_group_context = 1
+                  AND EXISTS (
+                      SELECT 1
+                      FROM group_members viewer_group
+                      JOIN group_members partner_group ON partner_group.group_id = viewer_group.group_id
+                      WHERE viewer_group.group_id = :checked_group_id
+                        AND viewer_group.user_id = :group_viewer_user_id
+                        AND partner_group.user_id = profile_owner.id
+                  )
+              )
+           )
+         GROUP BY p.id'
+    );
+    $statement->execute([
+        'partner_id' => $partnerId,
+        'slug' => $slug,
+        'is_admin' => ($_SESSION['role'] ?? null) === 'admin' ? 1 : 0,
+        'owner_user_id' => $userId,
+        'viewer_user_id' => $userId,
+        'has_group_context' => $groupId > 0 ? 1 : 0,
+        'checked_group_id' => $groupId,
+        'group_viewer_user_id' => $userId,
+    ]);
+    respond(['partner' => $statement->fetch() ?: null]);
+}
+
+if ($method === 'GET' && $action === 'my-profile') {
+    requireLogin();
+    $statement = $pdo->prepare(
+        'SELECT p.id::text, p.slug, p.name, p.linkedin_url AS "linkedin", p.industry, p.company,
+                p.company_url AS "companyUrl", p.email, p.phone, p.biography,
+                COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels,
+                COALESCE(json_agg(DISTINCT l.id::text) FILTER (WHERE l.id IS NOT NULL), \'[]\'::json) AS "labelIds"
+         FROM partners p
+         LEFT JOIN partner_profile_labels ppl ON ppl.partner_id = p.id
+         LEFT JOIN partner_labels l ON l.id = ppl.label_id
+         WHERE p.user_id = :user_id GROUP BY p.id'
+    );
+    $statement->execute(['user_id' => $userId]);
+    $partner = $statement->fetch() ?: null;
+    if ($partner) {
+        $partner['labelIds'] = json_decode((string) $partner['labelIds'], true) ?: [];
+    }
+    respond(['partner' => $partner]);
+}
+
+if ($method === 'POST' && $action === 'my-profile') {
+    requireLogin();
+    $body = requestBody();
+    required($body, ['name']);
+    $emailStatement = $pdo->prepare('SELECT email FROM users WHERE id = :id');
+    $emailStatement->execute(['id' => $userId]);
+    $loginEmail = $emailStatement->fetchColumn();
+    if (!$loginEmail) {
+        respond(['error' => 'Brugerens e-mail kunne ikke findes.'], 400);
+    }
+    $linkExisting = $pdo->prepare(
+        'UPDATE partners AS partner
+         SET user_id = :user_id
+         WHERE partner.user_id IS NULL
+           AND LOWER(TRIM(partner.email)) = LOWER(TRIM(:email))
+           AND NOT EXISTS (
+               SELECT 1 FROM partners AS existing WHERE existing.user_id = :existing_user_id
+           )'
+    );
+    $linkExisting->execute(['user_id' => $userId, 'email' => $loginEmail, 'existing_user_id' => $userId]);
+    $statement = $pdo->prepare(
+        'INSERT INTO partners (user_id, slug, name, linkedin_url, industry, company, company_url, email, phone, biography)
+         VALUES (:user_id, :slug, :name, :linkedin, :industry, :company, :company_url, :email, :phone, :biography)
+         ON CONFLICT (user_id) DO UPDATE SET slug = EXCLUDED.slug, name = EXCLUDED.name, linkedin_url = EXCLUDED.linkedin_url,
+           industry = EXCLUDED.industry, company = EXCLUDED.company, company_url = EXCLUDED.company_url,
+           email = EXCLUDED.email, phone = EXCLUDED.phone, biography = EXCLUDED.biography
+         RETURNING id::text, slug'
+    );
+    $statement->execute([
+        'user_id' => $userId, 'slug' => slugify((string) $body['name']) . '-' . $userId,
+        'name' => trim((string) $body['name']), 'linkedin' => nullable($body, 'linkedin'),
+        'industry' => nullable($body, 'industry'), 'company' => nullable($body, 'company'),
+        'company_url' => nullable($body, 'companyUrl'), 'email' => $loginEmail,
+        'phone' => nullable($body, 'phone'), 'biography' => nullable($body, 'biography'),
+    ]);
+    $partner = $statement->fetch();
+    $pdo->prepare('DELETE FROM partner_profile_labels WHERE partner_id = :partner_id')->execute(['partner_id' => (int) $partner['id']]);
+    $insertLabel = $pdo->prepare('INSERT INTO partner_profile_labels (partner_id, label_id) VALUES (:partner_id, :label_id) ON CONFLICT DO NOTHING');
+    foreach (($body['labelIds'] ?? []) as $labelId) {
+        $insertLabel->execute(['partner_id' => (int) $partner['id'], 'label_id' => (int) $labelId]);
+    }
+    respond(['partner' => $partner]);
+}
+
+if ($method === 'GET' && $action === 'admin-users') {
+    requireAdmin();
+    $search = trim((string) ($_GET['search'] ?? ''));
+    $role = (string) ($_GET['role'] ?? '');
+    $groupId = (int) ($_GET['groupId'] ?? 0);
+    $requestedUserId = (int) ($_GET['userId'] ?? 0);
+    $page = max(1, (int) ($_GET['page'] ?? 1));
+    $pageSize = min(50, max(5, (int) ($_GET['pageSize'] ?? 10)));
+    $offset = ($page - 1) * $pageSize;
+    $where = [];
+    $params = ['limit' => $pageSize, 'offset' => $offset];
+    if ($search !== '') {
+        $where[] = '(LOWER(u.email) LIKE LOWER(:search) OR LOWER(p.name) LIKE LOWER(:search) OR LOWER(p.company) LIKE LOWER(:search))';
+        $params['search'] = '%' . $search . '%';
+    }
+    if ($role === 'admin' || $role === 'member') {
+        $where[] = 'u.role = :role';
+        $params['role'] = $role;
+    }
+    if ($groupId > 0) {
+        $where[] = 'EXISTS (SELECT 1 FROM group_members gm_filter WHERE gm_filter.user_id = u.id AND gm_filter.group_id = :filter_group_id)';
+        $params['filter_group_id'] = $groupId;
+    }
+    if ($requestedUserId > 0) {
+        $where[] = 'u.id = :requested_user_id';
+        $params['requested_user_id'] = $requestedUserId;
+    }
+    $whereSql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+    $count = $pdo->prepare(
+        "SELECT COUNT(DISTINCT u.id)::int
+         FROM users u
+         LEFT JOIN partners p ON p.user_id = u.id
+           OR (p.user_id IS NULL AND LOWER(TRIM(p.email)) = LOWER(TRIM(u.email)))
+         $whereSql"
+    );
+    foreach ($params as $key => $value) {
+        if ($key !== 'limit' && $key !== 'offset') $count->bindValue(':' . $key, $value);
+    }
+    $count->execute();
+    $total = (int) $count->fetchColumn();
+    $users = $pdo->prepare(
+        'SELECT u.id::text, u.email, u.role,
+                COALESCE(string_agg(DISTINCT g.name, \', \' ORDER BY g.name), \'\') AS groups,
+                COALESCE(json_agg(DISTINCT gm.group_id::text) FILTER (WHERE gm.group_id IS NOT NULL), \'[]\'::json) AS "groupIds",
+                p.id::text AS "profileId", p.slug AS "profileSlug", p.name AS "profileName"
+         FROM users u
+         LEFT JOIN group_members gm ON gm.user_id = u.id
+         LEFT JOIN groups g ON g.id = gm.group_id
+         LEFT JOIN partners p ON p.user_id = u.id
+           OR (p.user_id IS NULL AND LOWER(TRIM(p.email)) = LOWER(TRIM(u.email)))
+         ' . $whereSql . '
+         GROUP BY u.id, p.id
+         ORDER BY u.email
+         LIMIT :limit OFFSET :offset'
+    );
+    foreach ($params as $key => $value) {
+        $users->bindValue(':' . $key, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
+    }
+    $users->execute();
+    $users = $users->fetchAll();
+    foreach ($users as &$user) {
+        $user['groupIds'] = json_decode((string) $user['groupIds'], true) ?: [];
+    }
+    unset($user);
+    respond(['users' => $users, 'total' => $total, 'page' => $page, 'pageSize' => $pageSize]);
+}
+
+if ($method === 'POST' && $action === 'admin-users') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['email', 'password']);
+    $statement = $pdo->prepare(
+        'INSERT INTO users (email, password_hash, role) VALUES (:email, :password_hash, :role)
+         RETURNING id::text, email, role'
+    );
+    $statement->execute([
+        'email' => strtolower(trim((string) $body['email'])),
+        'password_hash' => password_hash((string) $body['password'], PASSWORD_DEFAULT),
+        'role' => ($body['role'] ?? 'member') === 'admin' ? 'admin' : 'member',
+    ]);
+    $user = $statement->fetch();
+    foreach (($body['groupIds'] ?? []) as $groupId) {
+        $link = $pdo->prepare('INSERT INTO group_members (group_id, user_id) VALUES (:group_id, :user_id) ON CONFLICT DO NOTHING');
+        $link->execute(['group_id' => (int) $groupId, 'user_id' => (int) $user['id']]);
+    }
+    respond(['user' => $user], 201);
+}
+
+if ($method === 'POST' && $action === 'admin-update-user') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['userId', 'email']);
+    $targetUserId = (int) $body['userId'];
+    $role = ($body['role'] ?? 'member') === 'admin' ? 'admin' : 'member';
+    $password = trim((string) ($body['password'] ?? ''));
+    if ($targetUserId === $userId && $role !== 'admin') {
+        respond(['error' => 'Du kan ikke fjerne din egen administratorrolle.'], 422);
+    }
+    if ($password !== '' && strlen($password) < 10) {
+        respond(['error' => 'Adgangskoden skal være mindst 10 tegn.'], 422);
+    }
+    $pdo->beginTransaction();
+    try {
+        if ($password !== '') {
+            $statement = $pdo->prepare('UPDATE users SET email = :email, role = :role, password_hash = :password_hash WHERE id = :id RETURNING id::text, email, role');
+            $statement->execute([
+                'id' => $targetUserId,
+                'email' => strtolower(trim((string) $body['email'])),
+                'role' => $role,
+                'password_hash' => password_hash($password, PASSWORD_DEFAULT),
+            ]);
+        } else {
+            $statement = $pdo->prepare('UPDATE users SET email = :email, role = :role WHERE id = :id RETURNING id::text, email, role');
+            $statement->execute([
+                'id' => $targetUserId,
+                'email' => strtolower(trim((string) $body['email'])),
+                'role' => $role,
+            ]);
+        }
+        $userRow = $statement->fetch();
+        if (!$userRow) {
+            $pdo->rollBack();
+            respond(['error' => 'Brugeren findes ikke.'], 404);
+        }
+        $delete = $pdo->prepare('DELETE FROM group_members WHERE user_id = :user_id');
+        $delete->execute(['user_id' => $targetUserId]);
+        $insert = $pdo->prepare('INSERT INTO group_members (group_id, user_id) VALUES (:group_id, :user_id) ON CONFLICT DO NOTHING');
+        foreach (($body['groupIds'] ?? []) as $groupId) {
+            $insert->execute(['group_id' => (int) $groupId, 'user_id' => $targetUserId]);
+        }
+        $pdo->commit();
+    } catch (PDOException $error) {
+        $pdo->rollBack();
+        if ($error->getCode() === '23505') respond(['error' => 'E-mailen er allerede i brug.'], 409);
+        throw $error;
+    } catch (Throwable $error) {
+        $pdo->rollBack();
+        throw $error;
+    }
+    respond(['user' => $userRow]);
+}
+
+if ($method === 'POST' && $action === 'admin-user-groups') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['userId']);
+    $pdo->beginTransaction();
+    try {
+        $delete = $pdo->prepare('DELETE FROM group_members WHERE user_id = :user_id');
+        $delete->execute(['user_id' => (int) $body['userId']]);
+        $insert = $pdo->prepare('INSERT INTO group_members (group_id, user_id) VALUES (:group_id, :user_id) ON CONFLICT DO NOTHING');
+        foreach (($body['groupIds'] ?? []) as $groupId) {
+            $insert->execute(['group_id' => (int) $groupId, 'user_id' => (int) $body['userId']]);
+        }
+        $pdo->commit();
+    } catch (Throwable $error) {
+        $pdo->rollBack();
+        respond(['error' => 'Membership update failed.'], 500);
+    }
+    respond(['ok' => true]);
+}
+
+if ($method === 'POST' && $action === 'admin-delete-user') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['userId']);
+    $targetUserId = (int) $body['userId'];
+    if ($targetUserId === $userId) {
+        respond(['error' => 'Du kan ikke slette din egen bruger.'], 422);
+    }
+    $statement = $pdo->prepare('DELETE FROM users WHERE id = :id');
+    $statement->execute(['id' => $targetUserId]);
+    respond(['ok' => true]);
+}
+
+if ($method === 'POST' && $action === 'admin-groups') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['name']);
+    $statement = $pdo->prepare('INSERT INTO groups (name, address) VALUES (:name, :address) RETURNING id::text, name, address');
+    $statement->execute(['name' => trim((string) $body['name']), 'address' => nullable($body, 'address')]);
+    respond(['group' => $statement->fetch()], 201);
+}
+
+if ($method === 'POST' && $action === 'admin-update-group') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['groupId', 'name']);
+    $statement = $pdo->prepare('UPDATE groups SET name = :name, address = :address WHERE id = :id RETURNING id::text, name, address');
+    $statement->execute([
+        'id' => (int) $body['groupId'],
+        'name' => trim((string) $body['name']),
+        'address' => nullable($body, 'address'),
+    ]);
+    $group = $statement->fetch();
+    if (!$group) respond(['error' => 'Gruppen findes ikke.'], 404);
+    respond(['group' => $group]);
+}
+
+if ($method === 'POST' && $action === 'admin-delete-group') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['groupId']);
+    $statement = $pdo->prepare('DELETE FROM groups WHERE id = :id');
+    $statement->execute(['id' => (int) $body['groupId']]);
+    respond(['ok' => true]);
+}
+
+if ($method === 'POST' && $action === 'admin-labels') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['name']);
+    $statement = $pdo->prepare('INSERT INTO partner_labels (name) VALUES (:name) RETURNING id::text, name');
+    $statement->execute(['name' => trim((string) $body['name'])]);
+    respond(['label' => $statement->fetch()], 201);
+}
+
+if ($method === 'POST' && $action === 'admin-delete-label') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['labelId']);
+    $statement = $pdo->prepare('DELETE FROM partner_labels WHERE id = :label_id');
+    $statement->execute(['label_id' => (int) $body['labelId']]);
+    respond(['ok' => true]);
+}
+
+if ($method === 'POST' && $action === 'admin-meetings') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['title', 'date', 'time', 'address']);
+    $statement = $pdo->prepare(
+        'INSERT INTO meetings (slug, title, meeting_date, meeting_time, address, status, group_id, partners_text, program_text, location_text, files_text, guests_text, invite_text)
+         VALUES (:slug, :title, :meeting_date, :meeting_time, :address, :status, :group_id, :partners, :program, :location, :files, :guests, :invite)
+         RETURNING id::text, slug'
+    );
+    $statement->execute([
+        'slug' => slugify((string) $body['title']) . '-' . time(), 'title' => trim((string) $body['title']),
+        'meeting_date' => $body['date'], 'meeting_time' => $body['time'], 'address' => trim((string) $body['address']),
+        'status' => $body['status'] ?? 'upcoming', 'group_id' => nullable($body, 'groupId'),
+        'partners' => nullable($body, 'partners'), 'program' => nullable($body, 'program'),
+        'location' => nullable($body, 'location'), 'files' => nullable($body, 'files'),
+        'guests' => nullable($body, 'guests'), 'invite' => nullable($body, 'invite'),
+    ]);
+    respond(['meeting' => $statement->fetch()], 201);
+}
+
+if ($method === 'POST' && $action === 'admin-update-meeting') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['meetingId', 'title', 'date', 'time', 'address']);
+    $statement = $pdo->prepare(
+        'UPDATE meetings SET title = :title, meeting_date = :meeting_date, meeting_time = :meeting_time,
+             address = :address, status = :status, group_id = :group_id, partners_text = :partners,
+             program_text = :program, location_text = :location, files_text = :files,
+             guests_text = :guests, invite_text = :invite
+         WHERE id = :id
+         RETURNING id::text, slug'
+    );
+    $statement->execute([
+        'id' => (int) $body['meetingId'],
+        'title' => trim((string) $body['title']),
+        'meeting_date' => $body['date'],
+        'meeting_time' => $body['time'],
+        'address' => trim((string) $body['address']),
+        'status' => $body['status'] ?? 'upcoming',
+        'group_id' => nullable($body, 'groupId'),
+        'partners' => nullable($body, 'partners'),
+        'program' => nullable($body, 'program'),
+        'location' => nullable($body, 'location'),
+        'files' => nullable($body, 'files'),
+        'guests' => nullable($body, 'guests'),
+        'invite' => nullable($body, 'invite'),
+    ]);
+    $meeting = $statement->fetch();
+    if (!$meeting) respond(['error' => 'Mødet findes ikke.'], 404);
+    respond(['meeting' => $meeting]);
+}
+
+if ($method === 'POST' && $action === 'admin-delete-meeting') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['meetingId']);
+    $statement = $pdo->prepare('DELETE FROM meetings WHERE id = :id');
+    $statement->execute(['id' => (int) $body['meetingId']]);
+    respond(['ok' => true]);
+}
+
+respond(['error' => 'Unknown endpoint.'], 404);

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Min profil | Partnerportal</title>
+  <link rel="stylesheet" href="portal-header.css?v=20260604-03">
+  <style>
+    :root{--navy:#15243a;--green:#087563;--line:#d6dde3;--muted:#5d6b80;--page:#f5f7f9}
+    *{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--navy);font-family:Arial}
+    main{max-width:760px;margin:auto;padding:40px 20px}a{color:var(--green)}
+    form{margin-top:18px;padding:20px;border:1px solid var(--line);border-radius:8px;background:#fff}
+    label{display:block;margin-top:12px;color:var(--muted);font-size:13px;font-weight:bold}
+    input,textarea{width:100%;margin-top:5px;padding:10px;border:1px solid var(--line);border-radius:5px}
+    textarea{min-height:110px}button{margin-top:16px;padding:10px 14px;border:0;border-radius:5px;background:var(--green);color:#fff}
+    .notice{color:var(--green)}
+    .required{color:#c92b2b}.hint{color:var(--muted);font-size:13px}
+    input[readonly]{background:#f1f4f6;color:#536174}
+    .checks{display:flex;flex-wrap:wrap;gap:7px 16px;margin-top:8px}.checks label{margin:0;font-weight:normal}.checks input{width:auto;margin-right:4px}
+  </style>
+</head>
+<body>
+  <main>
+    <a href="index.html">&larr; Partnerportal</a>
+    <h1>Min partnerprofil</h1>
+    <p>Opret eller opdater din profil.</p>
+    <p class="hint"><span class="required">*</span> P&aring;kr&aelig;vet felt</p>
+    <form id="form">
+      <label>Navn <span class="required">*</span><input name="name" required></label>
+      <label>LinkedIn<input name="linkedin" type="url"></label>
+      <label>Virksomhed<input name="company"></label>
+      <label>Virksomhedslink<input name="companyUrl" type="url"></label>
+      <label>E-mail<input name="email" type="email" readonly></label>
+      <label>Telefon<input name="phone"></label>
+      <label>Biografi<textarea name="biography"></textarea></label>
+      <label>Brancher</label>
+      <div class="checks" id="labels"></div>
+      <button>Gem profil</button>
+      <p class="notice" id="notice"></p>
+      <p><a id="view-profile" style="display:none">Se min profil</a></p>
+    </form>
+  </main>
+  <script src="portal-data.js?v=20260604-02"></script><script src="portal-header.js?v=20260604-02"></script>
+  <script>
+    function showLink(partner) {
+      if (partner && partner.id) {
+        var link = document.getElementById("view-profile");
+        link.href = "partner-profil.html?id=" + encodeURIComponent(partner.id);
+        link.style.display = "inline";
+      }
+    }
+    PortalData.requireSession().then(async function (session) {
+      form.elements.email.value = session.email || "";
+      var availableLabels = await PortalData.labels();
+      var partner = await PortalData.myProfile();
+      var selected = partner ? partner.labelIds : [];
+      labels.innerHTML = availableLabels.map(function (label) {
+        return '<label><input type="checkbox" name="labelIds" value="' + label.id + '"' + (selected.includes(label.id) ? " checked" : "") + '> ' + PortalData.escape(label.name) + '</label>';
+      }).join("") || "<span>Der er endnu ingen brancher.</span>";
+      if (partner) {
+        Object.keys(partner).forEach(function (key) {
+          if (form.elements[key]) form.elements[key].value = partner[key] || "";
+        });
+        form.elements.email.value = session.email || partner.email || "";
+        showLink(partner);
+      }
+    });
+    form.onsubmit = async function (event) {
+      event.preventDefault();
+      try {
+        var data = Object.fromEntries(new FormData(form));
+        data.labelIds = Array.from(form.querySelectorAll("[name=labelIds]:checked")).map(function (item) { return item.value; });
+        var result = await PortalData.saveMyProfile(data);
+        notice.textContent = "Profilen er gemt.";
+        showLink(result.partner);
+      } catch (problem) {
+        notice.textContent = problem.message;
+      }
+    };
+  </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
