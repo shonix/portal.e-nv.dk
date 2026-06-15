@@ -6,7 +6,7 @@
     ".site-logo{display:flex;width:48px;height:48px;align-items:center;justify-content:center;background:#c92b2b;color:#fff;font-size:19px;font-weight:bold;letter-spacing:-1px}",
     ".site-nav{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:15px 22px}",
     ".site-nav a{color:#15243a;text-decoration:none;font-size:15px}",
-    ".site-nav a:hover{text-decoration:underline;text-decoration-color:#087563;text-underline-offset:5px}",
+    ".site-nav a:hover{text-decoration:underline;text-decoration-color:#163674;text-underline-offset:5px}",
     "@media(max-width:700px){.site-header{align-items:flex-start;min-height:73px;padding:12px 16px}.site-nav{gap:10px 14px}.site-nav a{font-size:13px}.site-logo{width:40px;height:40px}}"
   ].join("");
   document.head.appendChild(style);

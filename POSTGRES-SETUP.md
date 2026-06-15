@@ -10,6 +10,7 @@ Upload:
 ```text
 api/
   bootstrap.php
+  features.php
   index.php
 ```
 
@@ -34,6 +35,7 @@ hosting-root/
   portal/
     api/
       bootstrap.php
+      features.php
       index.php
 ```
 
@@ -77,6 +79,26 @@ Then run:
 database/migration-007-profile-group-relations.sql
 ```
 
+Then run:
+
+```text
+database/migration-008-admin-feedback.sql
+```
+
+Then run:
+
+```text
+database/migration-009-invitation-links.sql
+```
+
+For private meeting attachments, configure a directory outside the public
+`/portal` folder:
+
+```php
+'meeting_attachment_dir' => __DIR__ . '/portal-private/meeting-attachments',
+'meeting_attachment_max_bytes' => 10485760,
+```
+
 ## Initial admin user
 
 Place `database/create-admin.php` outside the public `/portal` folder and run it
@@ -89,6 +111,9 @@ php create-admin.php admin@example.com "use-a-long-password"
 Delete the uploaded `create-admin.php` file after the admin has been created.
 
 ## Endpoints
+
+Upload both `api/index.php` and `api/features.php` together; the feature
+endpoints are loaded by the main API router.
 
 ```text
 GET  /api/index.php?action=partners

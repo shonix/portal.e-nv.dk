@@ -19,6 +19,13 @@ function nullable(array $body, string $field): ?string
     return $value === '' ? null : $value;
 }
 
+function accountInvitationUrl(string $token): string
+{
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    return $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'portal.e-nv.dk')
+        . '/registrer.html?token=' . urlencode($token);
+}
+
 if ($method === 'POST' && $action === 'login') {
     $body = requestBody();
     $statement = $pdo->prepare('SELECT id, email, password_hash, role FROM users WHERE email = :email');
@@ -76,10 +83,20 @@ if ($method === 'POST' && $action === 'register') {
 
 if ($method === 'GET' && $action === 'admin-invitations') {
     requireAdmin();
-    respond(['invitations' => $pdo->query(
-        'SELECT id::text, email, expires_at::text AS "expiresAt", used_at::text AS "usedAt", created_at::text AS "createdAt"
+    $invitations = $pdo->query(
+        'SELECT id::text, email, admin_token AS "adminToken",
+                expires_at::text AS "expiresAt", used_at::text AS "usedAt",
+                created_at::text AS "createdAt"
          FROM invitations ORDER BY created_at DESC'
-    )->fetchAll()]);
+    )->fetchAll();
+    foreach ($invitations as &$invitation) {
+        $invitation['url'] = $invitation['adminToken']
+            ? accountInvitationUrl((string) $invitation['adminToken'])
+            : null;
+        unset($invitation['adminToken']);
+    }
+    unset($invitation);
+    respond(['invitations' => $invitations]);
 }
 
 if ($method === 'POST' && $action === 'admin-invitations') {
@@ -89,16 +106,17 @@ if ($method === 'POST' && $action === 'admin-invitations') {
     $email = strtolower(trim((string) $body['email']));
     $token = bin2hex(random_bytes(32));
     $statement = $pdo->prepare(
-        "INSERT INTO invitations (email, token_hash, expires_at)
-         VALUES (:email, :token_hash, NOW() + INTERVAL '7 days')
+        "INSERT INTO invitations (email, token_hash, admin_token, expires_at)
+         VALUES (:email, :token_hash, :admin_token, NOW() + INTERVAL '7 days')
          RETURNING id::text, email, expires_at::text AS \"expiresAt\""
     );
     $statement->execute([
         'email' => $email,
         'token_hash' => hash('sha256', $token),
+        'admin_token' => $token,
     ]);
     $invitation = $statement->fetch();
-    $invitation['url'] = 'https://' . ($_SERVER['HTTP_HOST'] ?? 'portal.e-nv.dk') . '/registrer.html?token=' . urlencode($token);
+    $invitation['url'] = accountInvitationUrl($token);
     $host = (string) ($_SERVER['HTTP_HOST'] ?? 'portal.e-nv.dk');
     $domain = preg_replace('/^portal\./', '', $host) ?: 'e-nv.dk';
     $from = (string) ($config['mail_from'] ?? ('noreply@' . $domain));
@@ -160,7 +178,8 @@ if ($method === 'GET' && $action === 'meetings') {
                 m.partners_text AS "partners", m.program_text AS "program",
                 m.location_text AS "location", m.files_text AS "files",
                 m.guests_text AS "guests", m.invite_text AS "invite",
-                m.group_id::text AS "groupId", g.name AS "groupName"
+                m.group_id::text AS "groupId", g.name AS "groupName",
+                m.rsvp_approval_mode AS "approvalMode"
          FROM meetings m LEFT JOIN groups g ON g.id = m.group_id
          ORDER BY m.meeting_date DESC, m.meeting_time DESC'
     )->fetchAll()]);
@@ -169,6 +188,54 @@ if ($method === 'GET' && $action === 'meetings') {
 if ($method === 'GET' && $action === 'labels') {
     requireLogin();
     respond(['labels' => $pdo->query('SELECT id::text, name FROM partner_labels ORDER BY name')->fetchAll()]);
+}
+
+if ($method === 'GET' && $action === 'admin-labels') {
+    requireAdmin();
+    $search = trim((string) ($_GET['search'] ?? ''));
+    $usage = (string) ($_GET['usage'] ?? '');
+    $page = max(1, (int) ($_GET['page'] ?? 1));
+    $pageSize = min(100, max(5, (int) ($_GET['pageSize'] ?? 10)));
+    $offset = ($page - 1) * $pageSize;
+    $where = [];
+    $params = [];
+    if ($search !== '') {
+        $where[] = 'LOWER(l.name) LIKE LOWER(:search)';
+        $params['search'] = '%' . $search . '%';
+    }
+    if ($usage === 'used') {
+        $where[] = 'EXISTS (SELECT 1 FROM partner_profile_labels ppl WHERE ppl.label_id = l.id)';
+    } elseif ($usage === 'unused') {
+        $where[] = 'NOT EXISTS (SELECT 1 FROM partner_profile_labels ppl WHERE ppl.label_id = l.id)';
+    }
+    $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
+    $count = $pdo->prepare('SELECT COUNT(*) FROM partner_labels l' . $whereSql);
+    foreach ($params as $key => $value) {
+        $count->bindValue(':' . $key, $value, PDO::PARAM_STR);
+    }
+    $count->execute();
+    $total = (int) $count->fetchColumn();
+    $labels = $pdo->prepare(
+        'SELECT l.id::text, l.name, COUNT(DISTINCT ppl.partner_id)::int AS "profileCount"
+         FROM partner_labels l
+         LEFT JOIN partner_profile_labels ppl ON ppl.label_id = l.id'
+         . $whereSql .
+        ' GROUP BY l.id
+          ORDER BY LOWER(l.name), l.id
+          LIMIT :limit OFFSET :offset'
+    );
+    foreach ($params as $key => $value) {
+        $labels->bindValue(':' . $key, $value, PDO::PARAM_STR);
+    }
+    $labels->bindValue(':limit', $pageSize, PDO::PARAM_INT);
+    $labels->bindValue(':offset', $offset, PDO::PARAM_INT);
+    $labels->execute();
+    respond([
+        'labels' => $labels->fetchAll(),
+        'total' => $total,
+        'page' => $page,
+        'pageSize' => $pageSize,
+    ]);
 }
 
 if ($method === 'GET' && $action === 'partners') {
@@ -363,7 +430,7 @@ if ($method === 'GET' && $action === 'admin-users') {
     $groupId = (int) ($_GET['groupId'] ?? 0);
     $requestedUserId = (int) ($_GET['userId'] ?? 0);
     $page = max(1, (int) ($_GET['page'] ?? 1));
-    $pageSize = min(50, max(5, (int) ($_GET['pageSize'] ?? 10)));
+    $pageSize = min(500, max(5, (int) ($_GET['pageSize'] ?? 10)));
     $offset = ($page - 1) * $pageSize;
     $where = [];
     $params = ['limit' => $pageSize, 'offset' => $offset];
@@ -587,8 +654,8 @@ if ($method === 'POST' && $action === 'admin-meetings') {
     $body = requestBody();
     required($body, ['title', 'date', 'time', 'address']);
     $statement = $pdo->prepare(
-        'INSERT INTO meetings (slug, title, meeting_date, meeting_time, address, status, group_id, partners_text, program_text, location_text, files_text, guests_text, invite_text)
-         VALUES (:slug, :title, :meeting_date, :meeting_time, :address, :status, :group_id, :partners, :program, :location, :files, :guests, :invite)
+        'INSERT INTO meetings (slug, title, meeting_date, meeting_time, address, status, group_id, partners_text, program_text, location_text, files_text, guests_text, invite_text, rsvp_approval_mode)
+         VALUES (:slug, :title, :meeting_date, :meeting_time, :address, :status, :group_id, :partners, :program, :location, :files, :guests, :invite, :approval_mode)
          RETURNING id::text, slug'
     );
     $statement->execute([
@@ -598,6 +665,7 @@ if ($method === 'POST' && $action === 'admin-meetings') {
         'partners' => nullable($body, 'partners'), 'program' => nullable($body, 'program'),
         'location' => nullable($body, 'location'), 'files' => nullable($body, 'files'),
         'guests' => nullable($body, 'guests'), 'invite' => nullable($body, 'invite'),
+        'approval_mode' => ($body['approvalMode'] ?? 'automatic') === 'manual' ? 'manual' : 'automatic',
     ]);
     respond(['meeting' => $statement->fetch()], 201);
 }
@@ -610,7 +678,8 @@ if ($method === 'POST' && $action === 'admin-update-meeting') {
         'UPDATE meetings SET title = :title, meeting_date = :meeting_date, meeting_time = :meeting_time,
              address = :address, status = :status, group_id = :group_id, partners_text = :partners,
              program_text = :program, location_text = :location, files_text = :files,
-             guests_text = :guests, invite_text = :invite
+             guests_text = :guests, invite_text = :invite,
+             rsvp_approval_mode = COALESCE(:approval_mode, rsvp_approval_mode)
          WHERE id = :id
          RETURNING id::text, slug'
     );
@@ -628,6 +697,9 @@ if ($method === 'POST' && $action === 'admin-update-meeting') {
         'files' => nullable($body, 'files'),
         'guests' => nullable($body, 'guests'),
         'invite' => nullable($body, 'invite'),
+        'approval_mode' => array_key_exists('approvalMode', $body)
+            ? ($body['approvalMode'] === 'manual' ? 'manual' : 'automatic')
+            : null,
     ]);
     $meeting = $statement->fetch();
     if (!$meeting) respond(['error' => 'Mødet findes ikke.'], 404);
@@ -638,9 +710,27 @@ if ($method === 'POST' && $action === 'admin-delete-meeting') {
     requireAdmin();
     $body = requestBody();
     required($body, ['meetingId']);
+    $attachmentNames = [];
+    try {
+        $attachments = $pdo->prepare('SELECT stored_name FROM meeting_attachments WHERE meeting_id = :id');
+        $attachments->execute(['id' => (int) $body['meetingId']]);
+        $attachmentNames = $attachments->fetchAll(PDO::FETCH_COLUMN);
+    } catch (PDOException $exception) {
+        // The attachment table may not exist until migration 008 has been applied.
+    }
     $statement = $pdo->prepare('DELETE FROM meetings WHERE id = :id');
     $statement->execute(['id' => (int) $body['meetingId']]);
+    $attachmentDirectory = (string) ($config['meeting_attachment_dir']
+        ?? (dirname(__DIR__, 2) . '/portal-private/meeting-attachments'));
+    foreach ($attachmentNames as $storedName) {
+        $path = $attachmentDirectory . DIRECTORY_SEPARATOR . basename((string) $storedName);
+        if (is_file($path)) {
+            @unlink($path);
+        }
+    }
     respond(['ok' => true]);
 }
+
+require __DIR__ . '/features.php';
 
 respond(['error' => 'Unknown endpoint.'], 404);

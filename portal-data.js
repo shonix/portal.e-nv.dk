@@ -1,9 +1,9 @@
 (function () {
   async function request(action, options, parameters) {
     var query = new URLSearchParams(Object.assign({ action:action }, parameters || {}));
-    var response = await fetch("api/index.php?" + query.toString(), Object.assign({
-      credentials: "same-origin", headers: { "Content-Type": "application/json" }
-    }, options || {}));
+    var settings = Object.assign({ credentials: "same-origin" }, options || {});
+    if (!(settings.body instanceof FormData)) settings.headers = Object.assign({ "Content-Type": "application/json" }, settings.headers || {});
+    var response = await fetch("api/index.php?" + query.toString(), settings);
     var payload = await response.json().catch(function () { return {}; });
     if (!response.ok) throw new Error(payload.error || "Server request failed.");
     return payload;
@@ -22,10 +22,22 @@
     adminUsers:function(parameters){return request("admin-users",null,parameters);}, addUser:function(data){return post("admin-users",data);},
     updateUser:function(data){return post("admin-update-user",data);}, deleteUser:function(userId){return post("admin-delete-user",{userId:userId});},
     saveUserGroups:function(data){return post("admin-user-groups",data);},
+    groupDetail:function(groupId){return request("admin-group-detail",null,{groupId:groupId});},
+    changeGroupMember:function(data){return post("admin-group-member",data);},
     addGroup:function(data){return post("admin-groups",data);}, updateGroup:function(data){return post("admin-update-group",data);}, deleteGroup:function(groupId){return post("admin-delete-group",{groupId:groupId});}, addMeeting:function(data){return post("admin-meetings",data);}, updateMeeting:function(data){return post("admin-update-meeting",data);}, deleteMeeting:function(meetingId){return post("admin-delete-meeting",{meetingId:meetingId});},
-    addLabel:function(data){return post("admin-labels",data);}, deleteLabel:function(labelId){return post("admin-delete-label",{labelId:labelId});},
+    adminLabels:function(parameters){return request("admin-labels",null,parameters);}, addLabel:function(data){return post("admin-labels",data);}, deleteLabel:function(labelId){return post("admin-delete-label",{labelId:labelId});}, importLabels:function(names){return post("admin-import-labels",{names:names});},
     invitations:async function(){return (await request("admin-invitations")).invitations;}, addInvitation:function(data){return post("admin-invitations",data);},
-    requireSession:async function(role){var s=await this.session();if(!s.loggedIn||(role&&s.role!==role)){location.href="login.html";throw new Error("Login required.");}return s;},
+    meetingInvitations:function(meetingId){return request("admin-meeting-invitations",null,{meetingId:meetingId});},
+    saveMeetingSettings:function(meetingId,approvalMode){return post("admin-meeting-settings",{meetingId:meetingId,approvalMode:approvalMode});},
+    sendMeetingInvitations:function(data){return post("admin-send-meeting-invitations",data);},
+    rotateMeetingInvitation:function(meetingId){return post("admin-rotate-meeting-invitation",{meetingId:meetingId});},
+    meetingInvitation:function(token){return request("meeting-invitation",null,{token:token});},
+    saveMeetingRsvp:function(token,response){return post("meeting-rsvp",{token:token,response:response});},
+    reviewRsvp:function(data){return post("admin-review-rsvp",data);},
+    meetingAttachments:async function(meetingId){return (await request("admin-meeting-attachments",null,{meetingId:meetingId})).attachments;},
+    uploadMeetingAttachment:function(meetingId,file){var data=new FormData();data.append("meetingId",meetingId);data.append("file",file);return request("admin-upload-attachment",{method:"POST",body:data});},
+    deleteMeetingAttachment:function(attachmentId){return post("admin-delete-attachment",{attachmentId:attachmentId});},
+    requireSession:async function(role){var s=await this.session();if(!s.loggedIn||(role&&s.role!==role)){var next=location.pathname.split("/").pop()+location.search;location.href="login.html?next="+encodeURIComponent(next);throw new Error("Login required.");}return s;},
     escape:function(value){return String(value==null?"":value).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c];});}
   };
 })();
