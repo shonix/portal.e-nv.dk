@@ -11,7 +11,8 @@
     form{margin-top:18px;padding:20px;border:1px solid var(--line);border-radius:8px;background:#fff}
     label{display:block;margin-top:12px;color:var(--muted);font-size:13px;font-weight:bold}
     input,select,textarea{width:100%;margin-top:5px;padding:10px;border:1px solid var(--line);border-radius:5px}
-    select[multiple]{min-height:118px}textarea{min-height:70px}
+    textarea{min-height:70px}
+    .picker{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;margin-top:5px}.picker select{margin-top:0}.selected-tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.tag{display:inline-flex;gap:7px;align-items:center;padding:6px 9px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--navy);font-size:13px}.tag button{margin:0;padding:0;border:0;background:transparent;color:#a12626}
     .hint{display:block;margin-top:5px;color:var(--muted);font-size:12px;font-weight:normal}
     button{margin-top:16px;padding:10px 14px;border:0;border-radius:5px;background:var(--green);color:#fff}
     .notice{color:var(--green)}
@@ -24,19 +25,18 @@
   <form id="form">
     <label>Titel<input name="title" required></label>
     <label>Grupper
-      <select name="groupIds" id="groups" multiple size="5"></select>
-      <span class="hint">Hold Ctrl eller Cmd nede for at vaelge flere grupper.</span>
+      <span class="picker"><select id="groups"></select><button type="button" id="add-group">Tilfoej</button></span>
+      <span class="hint">Ingen valg betyder ingen bestemt gruppe.</span>
     </label>
+    <div class="selected-tags" id="selected-groups"></div>
     <label>Dato<input name="date" type="date" required></label>
     <label>Tidspunkt<input name="time" type="time" required></label>
     <label>Adresse<input name="address" required></label>
     <label>Status<select name="status"><option value="upcoming">Kommende</option><option value="held">Afholdt</option><option value="cancelled">Aflyst</option></select></label>
-    <label>Partnere<textarea name="partners"></textarea></label>
+    <label>Ekstra partnere / noter<textarea name="partners"></textarea></label>
     <label>Program<textarea name="program"></textarea></label>
     <label>Lokation<input name="location"></label>
-    <label>Filer<input name="files"></label>
-    <label>Gaester<input name="guests"></label>
-    <label>Invitationslink<input name="invite"></label>
+    <label>Gaester<textarea name="guests"></textarea></label>
     <button>Opret moede</button>
     <p class="notice" id="notice"></p>
   </form>
@@ -44,9 +44,14 @@
 <script src="portal-data.js?v=20260604-02"></script>
 <script src="portal-header.js?v=20260604-02"></script>
 <script>
-function payload(form){var data=Object.fromEntries(new FormData(form));data.groupIds=Array.from(form.querySelectorAll('[name=groupIds] option:checked')).map(function(x){return x.value});return data}
-PortalData.requireSession("admin").then(async function(){var items=await PortalData.groups();groups.innerHTML=items.map(function(g){return'<option value="'+g.id+'">'+PortalData.escape(g.name)+'</option>'}).join("")});
-form.onsubmit=async function(e){e.preventDefault();try{await PortalData.addMeeting(payload(form));form.reset();notice.textContent="Moedet er oprettet."}catch(x){notice.textContent=x.message}};
+var allGroups=[],selectedGroupIds=[];
+function groupName(id){var group=allGroups.find(function(g){return String(g.id)===String(id)});return group?group.name:"Gruppe "+id}
+function renderGroups(){var selected=selectedGroupIds.map(String),options=allGroups.filter(function(g){return !selected.includes(String(g.id))});groups.innerHTML=options.length?options.map(function(g){return'<option value="'+g.id+'">'+PortalData.escape(g.name)+'</option>'}).join(""):'<option value="">Alle grupper er tilfoejet</option>';groups.disabled=!options.length;document.getElementById("add-group").disabled=!options.length;document.getElementById("selected-groups").innerHTML=selected.length?selected.map(function(id){return'<span class="tag">'+PortalData.escape(groupName(id))+' <button type="button" data-remove-group="'+id+'">Fjern</button></span>'}).join(""):'<span class="hint">Ingen grupper valgt.</span>';document.querySelectorAll("[data-remove-group]").forEach(function(button){button.onclick=function(){var id=String(button.dataset.removeGroup);selectedGroupIds.splice(selectedGroupIds.indexOf(id),1);renderGroups()}})}
+function payload(form){var data=Object.fromEntries(new FormData(form));data.groupIds=selectedGroupIds.slice();return data}
+PortalData.requireSession("admin").then(async function(){allGroups=await PortalData.groups();renderGroups()});
+document.getElementById("add-group").onclick=function(){if(groups.value&&!selectedGroupIds.includes(String(groups.value))){selectedGroupIds.push(String(groups.value));renderGroups()}};
+form.onsubmit=async function(e){e.preventDefault();try{await PortalData.addMeeting(payload(form));form.reset();selectedGroupIds=[];renderGroups();notice.textContent="Moedet er oprettet."}catch(x){notice.textContent=x.message}};
 </script>
 </body>
 </html>
+

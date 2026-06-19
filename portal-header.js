@@ -1,4 +1,11 @@
 (function () {
+  if (!document.querySelector('link[rel~="icon"]')) {
+    var favicon = document.createElement("link");
+    favicon.rel = "icon";
+    favicon.type = "image/svg+xml";
+    favicon.href = "favicon.svg";
+    document.head.appendChild(favicon);
+  }
   var style = document.createElement("style");
   style.textContent = [
     ".site-header{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:24px;min-height:77px;padding:14px 28px;border-bottom:1px solid #d6dde3;background:#fff;font-family:Arial,Helvetica,sans-serif}",

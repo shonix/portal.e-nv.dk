@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Rediger profil | Administration</title>
+  <link rel="stylesheet" href="portal-header.css?v=20260619-01">
+  <style>
+    :root{--navy:#15243a;--green:#163674;--line:#d6dde3;--muted:#5d6b80;--page:#f5f7f9;--surface:#fff;--danger:#a12626}
+    *{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--navy);font-family:Arial,Helvetica,sans-serif}
+    main{max-width:760px;margin:auto;padding:40px 20px 64px}a{color:var(--green);text-underline-offset:3px}
+    form{margin-top:18px;padding:22px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+    h1{margin:10px 0 6px;font-size:34px}.intro,.hint{color:var(--muted)}
+    label{display:block;margin-top:12px;color:var(--muted);font-size:13px;font-weight:bold}
+    input,textarea{width:100%;margin-top:5px;padding:10px;border:1px solid var(--line);border-radius:5px;background:#fff}
+    input[readonly]{background:#f1f4f6;color:#536174}textarea{min-height:110px}
+    button{margin-top:16px;padding:10px 14px;border:0;border-radius:5px;background:var(--green);color:#fff;cursor:pointer}
+    .notice{min-height:20px;color:var(--green)}.required{color:var(--danger)}
+    .picker{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;margin-top:5px}.picker select{width:100%;padding:10px;border:1px solid var(--line);border-radius:5px;background:#fff}.selected-tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.tag{display:inline-flex;gap:7px;align-items:center;padding:6px 9px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--navy);font-size:13px}.tag button{margin:0;padding:0;border:0;background:transparent;color:var(--danger)}
+  </style>
+</head>
+<body>
+<main>
+  <a id="back" href="admin-brugere.html">&larr; Brugere</a>
+  <h1>Rediger profil</h1>
+  <p class="intro" id="intro">Henter profil...</p>
+  <p class="hint"><span class="required">*</span> Påkrævet felt</p>
+  <form id="form" style="display:none">
+    <label>Navn <span class="required">*</span><input name="name" required></label>
+    <label>LinkedIn<input name="linkedin" type="url"></label>
+    <label>Virksomhed<input name="company"></label>
+    <label>Virksomhedslink<input name="companyUrl" type="url"></label>
+    <label>E-mail<input name="email" type="email" readonly></label>
+    <label>Telefon<input name="phone"></label>
+    <label>Biografi<textarea name="biography"></textarea></label>
+    <label>Brancher
+      <span class="picker"><select id="label-picker"></select><button type="button" id="add-label">Tilføj</button></span>
+    </label>
+    <div class="selected-tags" id="labels"></div>
+    <button>Gem profil</button>
+    <p class="notice" id="notice"></p>
+    <p><a id="view-profile" style="display:none">Se profil</a></p>
+  </form>
+</main>
+<script src="portal-data.js?v=20260619-01"></script>
+<script src="portal-header.js?v=20260619-01"></script>
+<script>
+var userId=new URLSearchParams(location.search).get("userId"),availableLabels=[],selectedLabelIds=[];
+function showLink(partner){if(partner&&partner.id){var link=document.getElementById("view-profile");link.href="partner-profil.html?id="+encodeURIComponent(partner.id);link.style.display="inline"}}
+function labelName(id){var label=availableLabels.find(function(item){return String(item.id)===String(id)});return label?label.name:"Branche "+id}
+function renderLabels(){var selected=selectedLabelIds.map(String),options=availableLabels.filter(function(label){return !selected.includes(String(label.id))});document.getElementById("label-picker").innerHTML=options.length?options.map(function(label){return'<option value="'+label.id+'">'+PortalData.escape(label.name)+'</option>'}).join(""):'<option value="">Alle brancher er tilføjet</option>';document.getElementById("label-picker").disabled=!options.length;document.getElementById("add-label").disabled=!options.length;labels.innerHTML=selected.length?selected.map(function(id){return'<span class="tag">'+PortalData.escape(labelName(id))+' <button type="button" data-remove-label="'+id+'">Fjern</button></span>'}).join(""):'<span class="hint">Ingen brancher valgt.</span>';labels.querySelectorAll("[data-remove-label]").forEach(function(button){button.onclick=function(){var id=String(button.dataset.removeLabel);selectedLabelIds.splice(selectedLabelIds.indexOf(id),1);renderLabels()}})}
+PortalData.requireSession("admin").then(async function(){
+  availableLabels=await PortalData.labels();var data=await PortalData.adminProfile(userId),partner=data.partner;
+  selectedLabelIds=partner?(partner.labelIds||[]).map(String):[];
+  document.getElementById("back").href="admin-bruger.html?id="+encodeURIComponent(userId);
+  intro.textContent=data.user.email;
+  form.style.display="block";
+  form.elements.email.value=data.user.email;
+  renderLabels();
+  if(partner){Object.keys(partner).forEach(function(key){if(form.elements[key])form.elements[key].value=partner[key]||""});form.elements.email.value=data.user.email||partner.email||"";showLink(partner)}
+}).catch(function(error){intro.textContent=error.message});
+document.getElementById("add-label").onclick=function(){var select=document.getElementById("label-picker");if(select.value&&!selectedLabelIds.includes(String(select.value))){selectedLabelIds.push(String(select.value));renderLabels()}};
+form.onsubmit=async function(event){event.preventDefault();try{var data=Object.fromEntries(new FormData(form));data.userId=userId;data.labelIds=selectedLabelIds.slice();var result=await PortalData.saveAdminProfile(data);notice.textContent="Profilen er gemt.";showLink(result.partner)}catch(error){notice.textContent=error.message}};
+</script>
+</body>
+</html>

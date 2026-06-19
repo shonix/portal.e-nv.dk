@@ -47,6 +47,12 @@ function requestBody(): array
     return is_array($body) ? $body : [];
 }
 
+function portalBaseUrl(array $config): string
+{
+    $baseUrl = trim((string) ($config['portal_base_url'] ?? 'https://portal.e-nv.dk'));
+    return rtrim($baseUrl, '/');
+}
+
 function requireAdmin(): void
 {
     if (($_SESSION['role'] ?? null) !== 'admin') {

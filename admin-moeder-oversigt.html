@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
-  <title>Moeder | Administration</title>
+  <title>Møder | Administration</title>
   <link rel="stylesheet" href="portal-header.css?v=20260604-03">
   <style>
     :root{--navy:#15243a;--green:#163674;--line:#d6dde3;--muted:#5d6b80;--page:#f5f7f9;--surface:#fff;--danger:#a12626}
@@ -14,11 +14,12 @@
     .panel,.item{padding:20px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.item{margin-bottom:12px}
     label{display:block;margin-top:12px;color:var(--muted);font-size:13px;font-weight:bold}
     input,select,textarea{width:100%;margin-top:5px;padding:10px;border:1px solid var(--line);border-radius:5px;background:#fff}
-    select[multiple]{min-height:118px}.hint{display:block;margin-top:5px;color:var(--muted);font-size:12px;font-weight:normal}
+    .hint{display:block;margin-top:5px;color:var(--muted);font-size:12px;font-weight:normal}
+    .picker{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;margin-top:5px}.picker select{margin-top:0}.selected-tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.tag{display:inline-flex;gap:7px;align-items:center;padding:6px 9px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--navy);font-size:13px}.tag button{min-height:auto;padding:0;border:0;color:var(--danger)}
     textarea{min-height:68px;resize:vertical}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
     .button-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:16px}
     button{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:9px 13px;border:1px solid var(--line);border-radius:5px;background:#fff;color:var(--navy);font:inherit;cursor:pointer}
-    .primary{border-color:var(--green);background:var(--green);color:#fff}.danger{border-color:var(--danger);color:var(--danger)}
+    .primary{border-color:var(--green);background:var(--green);color:#fff}#create-form>.primary{margin-top:16px}.danger{border-color:var(--danger);color:var(--danger)}
     .notice{min-height:20px;color:var(--green)}.meeting-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
     .meeting-head h2{margin:0;font-size:20px}.status{color:var(--green);font-size:12px;font-weight:bold;text-transform:uppercase}
     .item form{display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}.item.editing form{display:block}
@@ -28,49 +29,52 @@
 <body>
 <main>
   <a href="admin.html">&larr; Administration</a>
-  <h1>Moeder</h1>
-  <p class="intro">Opret, rediger og slet aarets moeder.</p>
+  <h1>Møder</h1>
+  <p class="intro">Opret, rediger og slet årets møder.</p>
   <div class="layout">
     <form class="panel" id="create-form">
-      <h2>Nyt moede</h2>
+      <h2>Nyt møde</h2>
       <label>Grupper
-        <select name="groupIds" class="group-options" multiple size="5"></select>
-        <span class="hint">Hold Ctrl eller Cmd nede for at vaelge flere grupper. Ingen valg betyder ingen bestemt gruppe.</span>
+        <span class="picker"><select class="group-picker"></select><button type="button" class="add-group">Tilføj</button></span>
+        <span class="hint">Ingen valg betyder ingen bestemt gruppe.</span>
       </label>
+      <div class="selected-tags selected-groups"></div>
       <label>Titel<input name="title" required></label>
       <div class="row"><label>Dato<input name="date" type="date" required></label><label>Tidspunkt<input name="time" type="time" required></label></div>
       <label>Adresse<input name="address" required></label>
       <label>Status<select name="status"><option value="upcoming">Kommende</option><option value="held">Afholdt</option><option value="cancelled">Aflyst</option></select></label>
-      <label>Partnere<textarea name="partners"></textarea></label>
+      <label>Ekstra partnere / noter<textarea name="partners"></textarea><span class="hint">Partnere hentes automatisk fra de valgte grupper. Brug kun dette felt til ældre møder eller ekstra navne.</span></label>
       <label>Program<textarea name="program"></textarea></label>
       <label>Lokation<input name="location"></label>
-      <label>Filer<input name="files"></label>
-      <label>Gaester<input name="guests"></label>
-      <label>Invitationslink<input name="invite"></label>
-      <button class="primary">Opret moede</button>
+      <label>Gæster<textarea name="guests"></textarea></label>
+      <button class="primary">Opret møde</button>
       <p class="notice" id="notice"></p>
     </form>
     <section class="panel">
-      <h2>Eksisterende moeder</h2>
-      <div id="list"><p class="meta">Henter moeder...</p></div>
+      <h2>Eksisterende møder</h2>
+      <div id="list"><p class="meta">Henter møder...</p></div>
     </section>
   </div>
 </main>
 <script src="portal-data.js?v=20260604-03"></script>
 <script src="portal-header.js?v=20260604-03"></script>
 <script>
-var groups=[], meetings=[];
+var groups=[], meetings=[], createGroupIds=[];
 var statusLabels={upcoming:"Kommende",held:"Afholdt",cancelled:"Aflyst"};
 function selectedGroupIds(m){return (m.groupIds&&m.groupIds.length?m.groupIds:(m.groupId?[m.groupId]:[])).map(String)}
-function groupOptions(selected){selected=(selected||[]).map(String);return groups.map(function(g){return '<option value="'+g.id+'"'+(selected.includes(String(g.id))?' selected':'')+'>'+PortalData.escape(g.name)+'</option>'}).join("")}
+function groupName(id){var group=groups.find(function(g){return String(g.id)===String(id)});return group?group.name:"Gruppe "+id}
+function renderGroupPicker(container,selected){selected=(selected||[]).map(String);var options=groups.filter(function(g){return !selected.includes(String(g.id))}),picker=container.querySelector(".group-picker"),add=container.querySelector(".add-group"),list=container.querySelector(".selected-groups");picker.innerHTML=options.length?options.map(function(g){return'<option value="'+g.id+'">'+PortalData.escape(g.name)+'</option>'}).join(""):'<option value="">Alle grupper er tilføjet</option>';picker.disabled=!options.length;add.disabled=!options.length;list.innerHTML=selected.length?selected.map(function(id){return'<span class="tag">'+PortalData.escape(groupName(id))+' <button type="button" data-remove-group="'+id+'">Fjern</button></span>'}).join(""):'<span class="meta">Ingen grupper valgt.</span>';list.querySelectorAll("[data-remove-group]").forEach(function(button){button.onclick=function(){var id=String(button.dataset.removeGroup),index=selected.indexOf(id);if(index>=0)selected.splice(index,1);if(container.id==="create-form")createGroupIds=selected;else container.dataset.groupIds=selected.join(",");renderGroupPicker(container,selected)}})}
+function groupPickerHtml(selected){return '<label>Grupper<span class="picker"><select class="group-picker"></select><button type="button" class="add-group">Tilføj</button></span><span class="hint">Ingen valg betyder ingen bestemt gruppe.</span></label><div class="selected-tags selected-groups"></div>'}
 function field(value){return PortalData.escape(value||"").replace(/"/g,"&quot;")}
-function payload(form){var data=Object.fromEntries(new FormData(form));data.groupIds=Array.from(form.querySelectorAll('[name=groupIds] option:checked')).map(function(x){return x.value});return data}
-function formHtml(m){return '<label>Grupper<select name="groupIds" multiple size="5">'+groupOptions(selectedGroupIds(m))+'</select><span class="hint">Hold Ctrl eller Cmd nede for at vaelge flere grupper.</span></label><label>Titel<input name="title" value="'+field(m.title)+'" required></label><div class="row"><label>Dato<input name="date" type="date" value="'+field(m.date)+'" required></label><label>Tidspunkt<input name="time" type="time" value="'+field(m.time)+'" required></label></div><label>Adresse<input name="address" value="'+field(m.address)+'" required></label><label>Status<select name="status"><option value="upcoming"'+(m.status==="upcoming"?" selected":"")+'>Kommende</option><option value="held"'+(m.status==="held"?" selected":"")+'>Afholdt</option><option value="cancelled"'+(m.status==="cancelled"?" selected":"")+'>Aflyst</option></select></label><label>Partnere<textarea name="partners">'+PortalData.escape(m.partners||"")+'</textarea></label><label>Program<textarea name="program">'+PortalData.escape(m.program||"")+'</textarea></label><label>Lokation<input name="location" value="'+field(m.location)+'"></label><label>Filer<input name="files" value="'+field(m.files)+'"></label><label>Gaester<input name="guests" value="'+field(m.guests)+'"></label><label>Invitationslink<input name="invite" value="'+field(m.invite)+'"></label><div class="button-row"><button class="primary">Gem moede</button><button type="button" class="danger" data-delete="'+m.id+'">Slet</button></div><p class="notice"></p>'}
-function render(){list.innerHTML=meetings.length?meetings.map(function(m){var groupText=m.groupNames||m.groupName||"Ingen bestemt gruppe";return '<article class="item" data-id="'+m.id+'"><div class="meeting-head"><span><h2>'+PortalData.escape(m.title)+'</h2><p class="meta">'+PortalData.escape(m.date)+' kl. '+PortalData.escape(m.time)+' - '+PortalData.escape(m.address)+'<br>Grupper: '+PortalData.escape(groupText)+'</p></span><span class="status">'+PortalData.escape(statusLabels[m.status]||m.status)+'</span></div><div class="button-row"><button type="button" data-edit="'+m.id+'">Rediger</button><a href="admin-moede-indstillinger.html?id='+m.id+'">Filer og tilmelding</a><a href="moede.html?id='+encodeURIComponent(m.slug)+'">Vis</a></div><form>'+formHtml(m)+'</form></article>'}).join(""):'<p class="meta">Der er ingen moeder endnu.</p>';bind()}
-function bind(){document.querySelectorAll("[data-edit]").forEach(function(b){b.onclick=function(){b.closest(".item").classList.toggle("editing")}});document.querySelectorAll(".item form").forEach(function(f){f.onsubmit=async function(e){e.preventDefault();var data=payload(f);data.meetingId=f.closest(".item").dataset.id;var n=f.querySelector(".notice");try{await PortalData.updateMeeting(data);n.textContent="Moedet er gemt.";load()}catch(x){n.textContent=x.message}}});document.querySelectorAll("[data-delete]").forEach(function(b){b.onclick=async function(){if(!confirm("Slet dette moede?"))return;try{await PortalData.deleteMeeting(b.dataset.delete);load()}catch(x){alert(x.message)}}})}
+function payload(form){var data=Object.fromEntries(new FormData(form));data.groupIds=form.id==="create-form"?createGroupIds.slice():(form.dataset.groupIds?form.dataset.groupIds.split(",").filter(Boolean):[]);return data}
+function formHtml(m){return groupPickerHtml(selectedGroupIds(m))+'<label>Titel<input name="title" value="'+field(m.title)+'" required></label><div class="row"><label>Dato<input name="date" type="date" value="'+field(m.date)+'" required></label><label>Tidspunkt<input name="time" type="time" value="'+field(m.time)+'" required></label></div><label>Adresse<input name="address" value="'+field(m.address)+'" required></label><label>Status<select name="status"><option value="upcoming"'+(m.status==="upcoming"?" selected":"")+'>Kommende</option><option value="held"'+(m.status==="held"?" selected":"")+'>Afholdt</option><option value="cancelled"'+(m.status==="cancelled"?" selected":"")+'>Aflyst</option></select></label><label>Ekstra partnere / noter<textarea name="partners">'+PortalData.escape(m.partners||"")+'</textarea><span class="hint">Partnere hentes automatisk fra de valgte grupper. Brug kun dette felt til ældre møder eller ekstra navne.</span></label><label>Program<textarea name="program">'+PortalData.escape(m.program||"")+'</textarea></label><label>Lokation<input name="location" value="'+field(m.location)+'"></label><label>Gæster<textarea name="guests">'+PortalData.escape(m.guests||"")+'</textarea></label><div class="button-row"><button class="primary">Gem møde</button><a href="admin-moede-indstillinger.html?id='+m.id+'">Filer og tilmelding</a><button type="button" class="danger" data-delete="'+m.id+'">Slet</button></div><p class="notice"></p>'}
+function render(){list.innerHTML=meetings.length?meetings.map(function(m){var groupText=m.groupNames||m.groupName||"Ingen bestemt gruppe";return '<article class="item" data-id="'+m.id+'"><div class="meeting-head"><span><h2>'+PortalData.escape(m.title)+'</h2><p class="meta">'+PortalData.escape(m.date)+' kl. '+PortalData.escape(m.time)+' - '+PortalData.escape(m.address)+'<br>Grupper: '+PortalData.escape(groupText)+'</p></span><span class="status">'+PortalData.escape(statusLabels[m.status]||m.status)+'</span></div><div class="button-row"><button type="button" data-edit="'+m.id+'">Rediger</button><a href="admin-moede-indstillinger.html?id='+m.id+'">Filer og tilmelding</a><a href="moede.html?id='+encodeURIComponent(m.slug)+'">Vis</a></div><form>'+formHtml(m)+'</form></article>'}).join(""):'<p class="meta">Der er ingen møder endnu.</p>';bind()}
+function bind(){document.querySelectorAll("[data-edit]").forEach(function(b){b.onclick=function(){b.closest(".item").classList.toggle("editing")}});document.querySelectorAll(".item form").forEach(function(f){var meeting=meetings.find(function(m){return String(m.id)===String(f.closest(".item").dataset.id)}),selected=selectedGroupIds(meeting||{});f.dataset.groupIds=selected.join(",");renderGroupPicker(f,selected);f.querySelector(".add-group").onclick=function(){var ids=f.dataset.groupIds?f.dataset.groupIds.split(",").filter(Boolean):[],select=f.querySelector(".group-picker");if(select.value&&!ids.includes(String(select.value))){ids.push(String(select.value));f.dataset.groupIds=ids.join(",");renderGroupPicker(f,ids)}};f.onsubmit=async function(e){e.preventDefault();var data=payload(f);data.meetingId=f.closest(".item").dataset.id;var n=f.querySelector(".notice");try{await PortalData.updateMeeting(data);n.textContent="Mødet er gemt.";load()}catch(x){n.textContent=x.message}}});document.querySelectorAll("[data-delete]").forEach(function(b){b.onclick=async function(){if(!confirm("Slet dette møde?"))return;try{await PortalData.deleteMeeting(b.dataset.delete);load()}catch(x){alert(x.message)}}})}
 async function load(){meetings=await PortalData.meetings();render()}
-PortalData.requireSession("admin").then(async function(){groups=await PortalData.groups();document.querySelectorAll(".group-options").forEach(function(s){s.innerHTML=groupOptions([])});load()});
-document.getElementById("create-form").onsubmit=async function(e){e.preventDefault();try{await PortalData.addMeeting(payload(e.target));e.target.reset();document.querySelectorAll(".group-options").forEach(function(s){s.innerHTML=groupOptions([])});notice.textContent="Moedet er oprettet.";load()}catch(x){notice.textContent=x.message}};
+PortalData.requireSession("admin").then(async function(){groups=await PortalData.groups();renderGroupPicker(document.getElementById("create-form"),createGroupIds);load()});
+document.querySelector("#create-form .add-group").onclick=function(){var select=document.querySelector("#create-form .group-picker");if(select.value&&!createGroupIds.includes(String(select.value))){createGroupIds.push(String(select.value));renderGroupPicker(document.getElementById("create-form"),createGroupIds)}};
+document.getElementById("create-form").onsubmit=async function(e){e.preventDefault();try{await PortalData.addMeeting(payload(e.target));e.target.reset();createGroupIds=[];renderGroupPicker(document.getElementById("create-form"),createGroupIds);notice.textContent="Mødet er oprettet.";load()}catch(x){notice.textContent=x.message}};
 </script>
 </body>
 </html>
+

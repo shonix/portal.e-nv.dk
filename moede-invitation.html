@@ -4,3 +4,6 @@ function statusText(m){if(!m.response)return"";if(m.response==="not_attending")r
 PortalData.requireSession().then(function(){return PortalData.meetingInvitation(token)}).then(function(data){current=data.meeting;title.textContent=current.title;details.textContent=current.date+" kl. "+current.time+" · "+current.address;program.innerHTML=current.program?'<h2>Program</h2><p class="meta">'+PortalData.escape(current.program)+'</p>':"";notice.textContent=statusText(current);if(current.status!=="cancelled")actions.style.display="flex";else notice.textContent="Mødet er aflyst."}).catch(function(x){title.textContent="Invitationen kunne ikke hentes";details.textContent=x.message});
 document.querySelectorAll("[data-response]").forEach(function(b){b.onclick=async function(){try{var r=await PortalData.saveMeetingRsvp(token,b.dataset.response);current.response=r.response;current.approvalStatus=r.approvalStatus;notice.textContent=statusText(current)}catch(x){notice.textContent=x.message}}});
 </script></body></html>
+
+
+

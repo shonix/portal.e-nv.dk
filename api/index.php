@@ -47,10 +47,23 @@ function syncMeetingGroups(PDO $pdo, int $meetingId, array $groupIds): void
     }
 }
 
+function manualPartnerNames(?string $text): array
+{
+    $text = trim((string) $text);
+    if ($text === '') return [];
+    $parts = preg_split('/[\r\n,;]+/', $text) ?: [];
+    $names = [];
+    foreach ($parts as $part) {
+        $name = trim(preg_replace('/\s+/', ' ', $part) ?: '');
+        if ($name !== '') $names[$name] = $name;
+    }
+    return array_values($names);
+}
+
 function accountInvitationUrl(string $token): string
 {
-    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    return $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'portal.e-nv.dk')
+    global $config;
+    return portalBaseUrl($config)
         . '/registrer.html?token=' . urlencode($token);
 }
 
@@ -145,9 +158,7 @@ if ($method === 'POST' && $action === 'admin-invitations') {
     ]);
     $invitation = $statement->fetch();
     $invitation['url'] = accountInvitationUrl($token);
-    $host = (string) ($_SERVER['HTTP_HOST'] ?? 'portal.e-nv.dk');
-    $domain = preg_replace('/^portal\./', '', $host) ?: 'e-nv.dk';
-    $from = (string) ($config['mail_from'] ?? ('noreply@' . $domain));
+    $from = (string) ($config['mail_from'] ?? 'noreply@e-nv.dk');
     $subject = 'Invitation til Ejendomsnetværkets partnerportal';
     $message = "Hej\n\nDu er blevet inviteret til Ejendomsnetværkets partnerportal.\n\nOpret din konto her:\n" .
         $invitation['url'] .
@@ -202,7 +213,12 @@ if ($method === 'GET' && $action === 'my-groups') {
 if ($method === 'GET' && $action === 'meetings') {
     $meetings = $pdo->query(
         'SELECT m.id::text, m.slug, m.title, m.meeting_date::text AS "date",
-                to_char(m.meeting_time, \'HH24:MI\') AS "time", m.address, m.status,
+                to_char(m.meeting_time, \'HH24:MI\') AS "time", m.address,
+                CASE
+                    WHEN m.status = \'cancelled\' THEN \'cancelled\'
+                    WHEN (m.meeting_date + m.meeting_time) < (CURRENT_TIMESTAMP AT TIME ZONE \'Europe/Copenhagen\') THEN \'held\'
+                    ELSE m.status
+                END AS status,
                 m.partners_text AS "partners", m.program_text AS "program",
                 m.location_text AS "location", m.files_text AS "files",
                 m.guests_text AS "guests", m.invite_text AS "invite",
@@ -345,6 +361,131 @@ if ($method === 'GET' && $action === 'group-partners') {
     respond(['group' => $group->fetch(), 'partners' => $partners->fetchAll()]);
 }
 
+if ($method === 'GET' && $action === 'meeting-partners') {
+    requireLogin();
+    $meetingKey = trim((string) ($_GET['id'] ?? ''));
+    if ($meetingKey === '') respond(['error' => 'Meeting is required.'], 422);
+    $page = max(1, (int) ($_GET['page'] ?? 1));
+    $pageSize = min(25, max(5, (int) ($_GET['pageSize'] ?? 8)));
+    $offset = ($page - 1) * $pageSize;
+    $search = trim((string) ($_GET['search'] ?? ''));
+    $labelId = (int) ($_GET['labelId'] ?? 0);
+    $meeting = $pdo->prepare(
+        'SELECT id, id::text AS "idText", slug, title, partners_text AS "manualPartners",
+                (SELECT COUNT(*) FROM meeting_groups mg WHERE mg.meeting_id = meetings.id)::int AS "groupCount"
+         FROM meetings
+         WHERE (:numeric_id > 0 AND id = :numeric_id) OR slug = :slug'
+    );
+    $numericId = ctype_digit($meetingKey) ? (int) $meetingKey : 0;
+    $meeting->execute(['numeric_id' => $numericId, 'slug' => $meetingKey]);
+    $meeting = $meeting->fetch();
+    if (!$meeting) respond(['error' => 'Mødet findes ikke.'], 404);
+    if (($_SESSION['role'] ?? null) !== 'admin' && (int) $meeting['groupCount'] > 0) {
+        $access = $pdo->prepare(
+            'SELECT 1
+             FROM meeting_groups mg
+             JOIN group_members gm ON gm.group_id = mg.group_id
+             WHERE mg.meeting_id = :meeting_id AND gm.user_id = :user_id'
+        );
+        $access->execute(['meeting_id' => (int) $meeting['id'], 'user_id' => $userId]);
+        if (!$access->fetchColumn()) respond(['error' => 'Du har ikke adgang til dette mødes partnere.'], 403);
+    }
+    if ((int) $meeting['groupCount'] > 0) {
+        $where = [];
+        $params = ['meeting_id' => (int) $meeting['id']];
+        if ($search !== '') {
+            $where[] = '(LOWER(p.name) LIKE LOWER(:search)
+                OR LOWER(p.company) LIKE LOWER(:search)
+                OR LOWER(p.email) LIKE LOWER(:search)
+                OR EXISTS (
+                    SELECT 1 FROM partner_profile_labels spl
+                    JOIN partner_labels sl ON sl.id = spl.label_id
+                    WHERE spl.partner_id = p.id AND LOWER(sl.name) LIKE LOWER(:search)
+                ))';
+            $params['search'] = '%' . $search . '%';
+        }
+        if ($labelId > 0) {
+            $where[] = 'EXISTS (
+                SELECT 1 FROM partner_profile_labels fpl
+                WHERE fpl.partner_id = p.id AND fpl.label_id = :label_id
+            )';
+            $params['label_id'] = $labelId;
+        }
+        $whereSql = $where ? ' AND ' . implode(' AND ', $where) : '';
+        $baseSql =
+            ' FROM partners p
+              JOIN users profile_owner ON profile_owner.id = p.user_id
+                OR (p.user_id IS NULL AND LOWER(TRIM(profile_owner.email)) = LOWER(TRIM(p.email)))
+              JOIN group_members gm ON gm.user_id = profile_owner.id
+              JOIN meeting_groups mg ON mg.group_id = gm.group_id
+              WHERE mg.meeting_id = :meeting_id' . $whereSql;
+        $listSql =
+            ' FROM partners p
+              JOIN users profile_owner ON profile_owner.id = p.user_id
+                OR (p.user_id IS NULL AND LOWER(TRIM(profile_owner.email)) = LOWER(TRIM(p.email)))
+              JOIN group_members gm ON gm.user_id = profile_owner.id
+              JOIN meeting_groups mg ON mg.group_id = gm.group_id
+              LEFT JOIN partner_profile_labels ppl ON ppl.partner_id = p.id
+              LEFT JOIN partner_labels l ON l.id = ppl.label_id
+              WHERE mg.meeting_id = :meeting_id' . $whereSql;
+        $count = $pdo->prepare('SELECT COUNT(DISTINCT p.id)::int' . $baseSql);
+        foreach ($params as $key => $value) {
+            $count->bindValue(':' . $key, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $count->execute();
+        $total = (int) $count->fetchColumn();
+        $partners = $pdo->prepare(
+            'SELECT p.id::text, p.slug, p.name, p.company, p.email,
+                    p.linkedin_url AS "linkedin", p.company_url AS "companyUrl",
+                    COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels'
+            . $listSql .
+            ' GROUP BY p.id
+              ORDER BY p.name
+              LIMIT :limit OFFSET :offset'
+        );
+        foreach ($params as $key => $value) {
+            $partners->bindValue(':' . $key, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
+        }
+        $partners->bindValue(':limit', $pageSize, PDO::PARAM_INT);
+        $partners->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $partners->execute();
+        $labels = $pdo->prepare(
+            'SELECT DISTINCT l.id::text, l.name
+             FROM partner_labels l
+             JOIN partner_profile_labels ppl ON ppl.label_id = l.id
+             JOIN partners p ON p.id = ppl.partner_id
+             JOIN users profile_owner ON profile_owner.id = p.user_id
+               OR (p.user_id IS NULL AND LOWER(TRIM(profile_owner.email)) = LOWER(TRIM(p.email)))
+             JOIN group_members gm ON gm.user_id = profile_owner.id
+             JOIN meeting_groups mg ON mg.group_id = gm.group_id
+             WHERE mg.meeting_id = :meeting_id
+             ORDER BY l.name'
+        );
+        $labels->execute(['meeting_id' => (int) $meeting['id']]);
+        respond([
+            'source' => 'groups',
+            'partners' => $partners->fetchAll(),
+            'labels' => $labels->fetchAll(),
+            'total' => $total,
+            'page' => $page,
+            'pageSize' => $pageSize,
+        ]);
+    }
+    $manual = array_map(fn($name) => ['name' => $name, 'unmatched' => true], manualPartnerNames($meeting['manualPartners'] ?? null));
+    if ($search !== '') {
+        $manual = array_values(array_filter($manual, fn($row) => stripos($row['name'], $search) !== false));
+    }
+    $total = count($manual);
+    respond([
+        'source' => 'manual',
+        'partners' => array_slice($manual, $offset, $pageSize),
+        'labels' => [],
+        'total' => $total,
+        'page' => $page,
+        'pageSize' => $pageSize,
+    ]);
+}
+
 if ($method === 'GET' && $action === 'partner-detail') {
     requireLogin();
     $partnerId = (int) ($_GET['id'] ?? 0);
@@ -452,6 +593,80 @@ if ($method === 'POST' && $action === 'my-profile') {
         'industry' => nullable($body, 'industry'), 'company' => nullable($body, 'company'),
         'company_url' => nullable($body, 'companyUrl'), 'email' => $loginEmail,
         'phone' => nullable($body, 'phone'), 'biography' => nullable($body, 'biography'),
+    ]);
+    $partner = $statement->fetch();
+    $pdo->prepare('DELETE FROM partner_profile_labels WHERE partner_id = :partner_id')->execute(['partner_id' => (int) $partner['id']]);
+    $insertLabel = $pdo->prepare('INSERT INTO partner_profile_labels (partner_id, label_id) VALUES (:partner_id, :label_id) ON CONFLICT DO NOTHING');
+    foreach (($body['labelIds'] ?? []) as $labelId) {
+        $insertLabel->execute(['partner_id' => (int) $partner['id'], 'label_id' => (int) $labelId]);
+    }
+    respond(['partner' => $partner]);
+}
+
+if ($method === 'GET' && $action === 'admin-profile') {
+    requireAdmin();
+    $targetUserId = (int) ($_GET['userId'] ?? 0);
+    if ($targetUserId <= 0) respond(['error' => 'Bruger er påkrævet.'], 422);
+    $userStatement = $pdo->prepare('SELECT id::text, email FROM users WHERE id = :id');
+    $userStatement->execute(['id' => $targetUserId]);
+    $targetUser = $userStatement->fetch();
+    if (!$targetUser) respond(['error' => 'Brugeren findes ikke.'], 404);
+    $statement = $pdo->prepare(
+        'SELECT p.id::text, p.slug, p.name, p.linkedin_url AS "linkedin", p.industry, p.company,
+                p.company_url AS "companyUrl", p.email, p.phone, p.biography,
+                COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels,
+                COALESCE(json_agg(DISTINCT l.id::text) FILTER (WHERE l.id IS NOT NULL), \'[]\'::json) AS "labelIds"
+         FROM partners p
+         LEFT JOIN partner_profile_labels ppl ON ppl.partner_id = p.id
+         LEFT JOIN partner_labels l ON l.id = ppl.label_id
+         WHERE p.user_id = :user_id GROUP BY p.id'
+    );
+    $statement->execute(['user_id' => $targetUserId]);
+    $partner = $statement->fetch() ?: null;
+    if ($partner) {
+        $partner['labelIds'] = json_decode((string) $partner['labelIds'], true) ?: [];
+    }
+    respond(['user' => $targetUser, 'partner' => $partner]);
+}
+
+if ($method === 'POST' && $action === 'admin-profile') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['userId', 'name']);
+    $targetUserId = (int) $body['userId'];
+    $emailStatement = $pdo->prepare('SELECT email FROM users WHERE id = :id');
+    $emailStatement->execute(['id' => $targetUserId]);
+    $loginEmail = $emailStatement->fetchColumn();
+    if (!$loginEmail) respond(['error' => 'Brugeren findes ikke.'], 404);
+    $linkExisting = $pdo->prepare(
+        'UPDATE partners AS partner
+         SET user_id = :user_id
+         WHERE partner.user_id IS NULL
+           AND LOWER(TRIM(partner.email)) = LOWER(TRIM(:email))
+           AND NOT EXISTS (
+               SELECT 1 FROM partners AS existing WHERE existing.user_id = :existing_user_id
+           )'
+    );
+    $linkExisting->execute(['user_id' => $targetUserId, 'email' => $loginEmail, 'existing_user_id' => $targetUserId]);
+    $statement = $pdo->prepare(
+        'INSERT INTO partners (user_id, slug, name, linkedin_url, industry, company, company_url, email, phone, biography)
+         VALUES (:user_id, :slug, :name, :linkedin, :industry, :company, :company_url, :email, :phone, :biography)
+         ON CONFLICT (user_id) DO UPDATE SET slug = EXCLUDED.slug, name = EXCLUDED.name, linkedin_url = EXCLUDED.linkedin_url,
+           industry = EXCLUDED.industry, company = EXCLUDED.company, company_url = EXCLUDED.company_url,
+           email = EXCLUDED.email, phone = EXCLUDED.phone, biography = EXCLUDED.biography
+         RETURNING id::text, slug'
+    );
+    $statement->execute([
+        'user_id' => $targetUserId,
+        'slug' => slugify((string) $body['name']) . '-' . $targetUserId,
+        'name' => trim((string) $body['name']),
+        'linkedin' => nullable($body, 'linkedin'),
+        'industry' => nullable($body, 'industry'),
+        'company' => nullable($body, 'company'),
+        'company_url' => nullable($body, 'companyUrl'),
+        'email' => $loginEmail,
+        'phone' => nullable($body, 'phone'),
+        'biography' => nullable($body, 'biography'),
     ]);
     $partner = $statement->fetch();
     $pdo->prepare('DELETE FROM partner_profile_labels WHERE partner_id = :partner_id')->execute(['partner_id' => (int) $partner['id']]);

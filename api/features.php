@@ -3,13 +3,47 @@ declare(strict_types=1);
 
 function portalUrl(string $path): string
 {
-    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-    return $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'portal.e-nv.dk') . '/' . ltrim($path, '/');
+    global $config;
+    return portalBaseUrl($config) . '/' . ltrim($path, '/');
 }
 
 function attachmentDirectory(array $config): string
 {
     return (string) ($config['meeting_attachment_dir'] ?? (dirname(__DIR__, 2) . '/portal-private/meeting-attachments'));
+}
+
+function officeArchiveMatches(string $path, string $extension): bool
+{
+    if (!class_exists(ZipArchive::class)) return false;
+    $zip = new ZipArchive();
+    if ($zip->open($path) !== true) return false;
+    $required = $extension === 'docx'
+        ? ['[Content_Types].xml', 'word/document.xml']
+        : ['[Content_Types].xml', 'xl/workbook.xml'];
+    foreach ($required as $entry) {
+        if ($zip->locateName($entry) === false) {
+            $zip->close();
+            return false;
+        }
+    }
+    $zip->close();
+    return true;
+}
+
+function canAccessMeeting(PDO $pdo, int $meetingId, int $userId): bool
+{
+    if (($_SESSION['role'] ?? null) === 'admin') return true;
+    $groupCount = $pdo->prepare('SELECT COUNT(*) FROM meeting_groups WHERE meeting_id = :meeting_id');
+    $groupCount->execute(['meeting_id' => $meetingId]);
+    if ((int) $groupCount->fetchColumn() === 0) return $userId > 0;
+    $access = $pdo->prepare(
+        'SELECT 1
+         FROM meeting_groups mg
+         JOIN group_members gm ON gm.group_id = mg.group_id
+         WHERE mg.meeting_id = :meeting_id AND gm.user_id = :user_id'
+    );
+    $access->execute(['meeting_id' => $meetingId, 'user_id' => $userId]);
+    return (bool) $access->fetchColumn();
 }
 
 if ($method === 'GET' && $action === 'admin-group-detail') {
@@ -175,9 +209,7 @@ if ($method === 'POST' && $action === 'admin-send-meeting-invitations') {
     $users->execute($userIds);
     $recipientRows = $users->fetchAll();
     $link = portalUrl('moede-invitation.html?token=' . urlencode($token));
-    $host = (string) ($_SERVER['HTTP_HOST'] ?? 'portal.e-nv.dk');
-    $domain = preg_replace('/^portal\./', '', $host) ?: 'e-nv.dk';
-    $from = (string) ($config['mail_from'] ?? ('noreply@' . $domain));
+    $from = (string) ($config['mail_from'] ?? 'noreply@e-nv.dk');
     $headers = implode("\r\n", [
         'From: Ejendomsnetværket <' . $from . '>',
         'Reply-To: ' . $from,
@@ -318,6 +350,20 @@ if ($method === 'GET' && $action === 'admin-meeting-attachments') {
     respond(['attachments' => $statement->fetchAll()]);
 }
 
+if ($method === 'GET' && $action === 'meeting-attachments') {
+    requireLogin();
+    $meetingId = (int) ($_GET['meetingId'] ?? 0);
+    if ($meetingId <= 0) respond(['error' => 'Møde er påkrævet.'], 422);
+    if (!canAccessMeeting($pdo, $meetingId, $userId)) respond(['error' => 'Du har ikke adgang til mødets filer.'], 403);
+    $statement = $pdo->prepare(
+        'SELECT id::text, original_name AS "name", mime_type AS "mimeType",
+                file_size::int AS "size", created_at::text AS "createdAt"
+         FROM meeting_attachments WHERE meeting_id = :meeting_id ORDER BY created_at DESC'
+    );
+    $statement->execute(['meeting_id' => $meetingId]);
+    respond(['attachments' => $statement->fetchAll()]);
+}
+
 if ($method === 'POST' && $action === 'admin-upload-attachment') {
     requireAdmin();
     $meetingId = (int) ($_POST['meetingId'] ?? 0);
@@ -338,6 +384,9 @@ if ($method === 'POST' && $action === 'admin-upload-attachment') {
     if (!isset($allowed[$extension])) respond(['error' => 'Filtypen er ikke tilladt.'], 422);
     $mime = (new finfo(FILEINFO_MIME_TYPE))->file((string) $file['tmp_name']) ?: 'application/octet-stream';
     if (!in_array($mime, $allowed[$extension], true)) respond(['error' => 'Filens indhold matcher ikke filtypen.'], 422);
+    if (in_array($extension, ['docx', 'xlsx'], true) && !officeArchiveMatches((string) $file['tmp_name'], $extension)) {
+        respond(['error' => 'Office-filen har ikke den forventede struktur.'], 422);
+    }
     $meetingExists = $pdo->prepare('SELECT 1 FROM meetings WHERE id = :id');
     $meetingExists->execute(['id' => $meetingId]);
     if (!$meetingExists->fetchColumn()) respond(['error' => 'Mødet findes ikke.'], 404);
@@ -397,6 +446,31 @@ if ($method === 'GET' && $action === 'admin-download-attachment') {
     $statement->execute(['id' => $attachmentId]);
     $attachment = $statement->fetch();
     if (!$attachment) respond(['error' => 'Filen findes ikke.'], 404);
+    $path = attachmentDirectory($config) . DIRECTORY_SEPARATOR . basename((string) $attachment['stored_name']);
+    if (!is_file($path)) respond(['error' => 'Filen mangler på serveren.'], 404);
+    header_remove('Content-Type');
+    header('Content-Type: ' . $attachment['mime_type']);
+    header('Content-Length: ' . (string) $attachment['file_size']);
+    $disposition = ($_GET['preview'] ?? '') === '1' ? 'inline' : 'attachment';
+    header('Content-Disposition: ' . $disposition . '; filename="' . addcslashes((string) $attachment['original_name'], '"\\') . '"');
+    session_write_close();
+    readfile($path);
+    exit;
+}
+
+if ($method === 'GET' && $action === 'meeting-download-attachment') {
+    requireLogin();
+    $attachmentId = (int) ($_GET['attachmentId'] ?? 0);
+    $statement = $pdo->prepare(
+        'SELECT meeting_id, original_name, stored_name, mime_type, file_size
+         FROM meeting_attachments WHERE id = :id'
+    );
+    $statement->execute(['id' => $attachmentId]);
+    $attachment = $statement->fetch();
+    if (!$attachment) respond(['error' => 'Filen findes ikke.'], 404);
+    if (!canAccessMeeting($pdo, (int) $attachment['meeting_id'], $userId)) {
+        respond(['error' => 'Du har ikke adgang til denne fil.'], 403);
+    }
     $path = attachmentDirectory($config) . DIRECTORY_SEPARATOR . basename((string) $attachment['stored_name']);
     if (!is_file($path)) respond(['error' => 'Filen mangler på serveren.'], 404);
     header_remove('Content-Type');

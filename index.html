@@ -231,9 +231,9 @@
 
 <div class="partner-portal">
   <header class="portal-intro">
-    <p class="eyebrow">Netv&aelig;rk</p>
+    <p class="eyebrow">Netværk</p>
     <h1 class="portal-title">Partnerportal</h1>
-    <p class="portal-description">Find dine netv&aelig;rksgrupper og hold dig opdateret om kommende m&oslash;der.</p>
+    <p class="portal-description">Find dine netværksgrupper og hold dig opdateret om kommende møder.</p>
   </header>
 
   <div class="portal-grid">
@@ -244,7 +244,7 @@
     </section>
 
     <section class="portal-panel">
-      <h2 class="portal-heading">&Aring;rets m&oslash;der</h2>
+      <h2 class="portal-heading">Årets møder</h2>
 
       <div class="filters">
         <button class="filter-button active" type="button" data-filter="all">Alle</button>
@@ -261,6 +261,14 @@
 <script src="portal-data.js?v=20260604-02"></script><script src="portal-header.js?v=20260604-02"></script>
 <script>
   var statusLabels = { upcoming: "Kommende", held: "Afholdt", cancelled: "Aflyst" };
+  function effectiveMeetingStatus(meeting) {
+    if (meeting.status === "cancelled") return "cancelled";
+    var time = String(meeting.time || "00:00").slice(0, 5);
+    var startsAt = new Date(String(meeting.date || "") + "T" + time + ":00");
+    return !Number.isNaN(startsAt.getTime()) && startsAt < new Date()
+      ? "held"
+      : (meeting.status || "upcoming");
+  }
   Promise.all([PortalData.groups(), PortalData.session()]).then(async function (results) {
     var groups = results[0], session = results[1], accessible = [];
     if (session.loggedIn) accessible = await PortalData.myGroups();
@@ -272,13 +280,14 @@
   });
   PortalData.meetings().then(function (meetings) {
     document.getElementById("meeting-list").innerHTML = meetings.map(function (meeting) {
+    var status = effectiveMeetingStatus(meeting);
     var date = new Date(meeting.date + "T00:00:00").toLocaleDateString("da-DK", { day: "numeric", month: "long", year: "numeric" });
-      return '<a class="meeting" data-status="' + PortalData.escape(meeting.status) + '" href="moede.html?id=' + encodeURIComponent(meeting.slug) + '" style="display:block;color:inherit;text-decoration:none">' +
-        '<div class="meeting-topline"><h3>' + PortalData.escape(meeting.title) + '</h3><span class="status ' + PortalData.escape(meeting.status) + '">' + PortalData.escape(statusLabels[meeting.status]) + '</span></div>' +
+      return '<a class="meeting" data-status="' + PortalData.escape(status) + '" href="moede.html?id=' + encodeURIComponent(meeting.slug) + '" style="display:block;color:inherit;text-decoration:none">' +
+        '<div class="meeting-topline"><h3>' + PortalData.escape(meeting.title) + '</h3><span class="status ' + PortalData.escape(status) + '">' + PortalData.escape(statusLabels[status] || status) + '</span></div>' +
         '<p class="portal-meta">' + date + ' &middot; kl. ' + PortalData.escape(meeting.time) + '</p><p class="portal-meta">' + PortalData.escape(meeting.address) + '</p></a>';
     }).join("");
   }).catch(function () {
-    document.getElementById("meeting-list").innerHTML = '<p class="portal-meta">M&oslash;der kunne ikke hentes fra databasen.</p>';
+    document.getElementById("meeting-list").innerHTML = '<p class="portal-meta">Møder kunne ikke hentes fra databasen.</p>';
   });
 
   document.querySelectorAll(".partner-portal .filter-button").forEach(function (button) {
@@ -301,6 +310,7 @@
     });
   });
 </script>
+
 
 
 

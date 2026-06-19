@@ -16,7 +16,7 @@
     .notice{color:var(--green)}
     .required{color:#c92b2b}.hint{color:var(--muted);font-size:13px}
     input[readonly]{background:#f1f4f6;color:#536174}
-    .checks{display:flex;flex-wrap:wrap;gap:7px 16px;margin-top:8px}.checks label{margin:0;font-weight:normal}.checks input{width:auto;margin-right:4px}
+    .picker{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;margin-top:5px}.picker select{width:100%;padding:10px;border:1px solid var(--line);border-radius:5px;background:#fff}.selected-tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.tag{display:inline-flex;gap:7px;align-items:center;padding:6px 9px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--navy);font-size:13px}.tag button{margin:0;padding:0;border:0;background:transparent;color:#c92b2b}
   </style>
 </head>
 <body>
@@ -33,8 +33,10 @@
       <label>E-mail<input name="email" type="email" readonly></label>
       <label>Telefon<input name="phone"></label>
       <label>Biografi<textarea name="biography"></textarea></label>
-      <label>Brancher</label>
-      <div class="checks" id="labels"></div>
+      <label>Brancher
+        <span class="picker"><select id="label-picker"></select><button type="button" id="add-label">Tilføj</button></span>
+      </label>
+      <div class="selected-tags" id="labels"></div>
       <button>Gem profil</button>
       <p class="notice" id="notice"></p>
       <p><a id="view-profile" style="display:none">Se min profil</a></p>
@@ -49,14 +51,36 @@
         link.style.display = "inline";
       }
     }
+    var availableLabels = [], selectedLabelIds = [];
+    function labelName(id) {
+      var label = availableLabels.find(function (item) { return String(item.id) === String(id); });
+      return label ? label.name : "Branche " + id;
+    }
+    function renderLabels() {
+      var selected = selectedLabelIds.map(String);
+      var options = availableLabels.filter(function (label) { return !selected.includes(String(label.id)); });
+      document.getElementById("label-picker").innerHTML = options.length
+        ? options.map(function (label) { return '<option value="' + label.id + '">' + PortalData.escape(label.name) + '</option>'; }).join("")
+        : '<option value="">Alle brancher er tilføjet</option>';
+      document.getElementById("label-picker").disabled = !options.length;
+      document.getElementById("add-label").disabled = !options.length;
+      labels.innerHTML = selected.length
+        ? selected.map(function (id) { return '<span class="tag">' + PortalData.escape(labelName(id)) + ' <button type="button" data-remove-label="' + id + '">Fjern</button></span>'; }).join("")
+        : '<span class="hint">Ingen brancher valgt.</span>';
+      labels.querySelectorAll("[data-remove-label]").forEach(function (button) {
+        button.onclick = function () {
+          var id = String(button.dataset.removeLabel);
+          selectedLabelIds.splice(selectedLabelIds.indexOf(id), 1);
+          renderLabels();
+        };
+      });
+    }
     PortalData.requireSession().then(async function (session) {
       form.elements.email.value = session.email || "";
-      var availableLabels = await PortalData.labels();
+      availableLabels = await PortalData.labels();
       var partner = await PortalData.myProfile();
-      var selected = partner ? partner.labelIds : [];
-      labels.innerHTML = availableLabels.map(function (label) {
-        return '<label><input type="checkbox" name="labelIds" value="' + label.id + '"' + (selected.includes(label.id) ? " checked" : "") + '> ' + PortalData.escape(label.name) + '</label>';
-      }).join("") || "<span>Der er endnu ingen brancher.</span>";
+      selectedLabelIds = partner ? (partner.labelIds || []).map(String) : [];
+      renderLabels();
       if (partner) {
         Object.keys(partner).forEach(function (key) {
           if (form.elements[key]) form.elements[key].value = partner[key] || "";
@@ -65,11 +89,18 @@
         showLink(partner);
       }
     });
+    document.getElementById("add-label").onclick = function () {
+      var select = document.getElementById("label-picker");
+      if (select.value && !selectedLabelIds.includes(String(select.value))) {
+        selectedLabelIds.push(String(select.value));
+        renderLabels();
+      }
+    };
     form.onsubmit = async function (event) {
       event.preventDefault();
       try {
         var data = Object.fromEntries(new FormData(form));
-        data.labelIds = Array.from(form.querySelectorAll("[name=labelIds]:checked")).map(function (item) { return item.value; });
+        data.labelIds = selectedLabelIds.slice();
         var result = await PortalData.saveMyProfile(data);
         notice.textContent = "Profilen er gemt.";
         showLink(result.partner);
@@ -80,6 +111,8 @@
   </script>
 </body>
 </html>
+
+
 
 
 

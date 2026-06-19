@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>M&oslash;de | Partnerportal</title>
+  <title>Møde | Partnerportal</title>
   <link rel="stylesheet" href="portal-header.css?v=20260604-03">
   <style>
     :root { --navy:#15243a; --green:#163674; --line:#d6dde3; --muted:#5d6b80; --page:#f5f7f9; --surface:#fff; }
@@ -15,13 +15,38 @@
     .cover { padding:24px; background:linear-gradient(135deg,#263764,#8ab9a2); color:#fff; }
     h1 { margin:0 0 12px; font-size:30px; }
     .date-line { display:flex; flex-wrap:wrap; gap:10px 24px; font-weight:bold; }
-    .address { margin:12px 0 0; }
+    .address { margin:12px 0 0; color:#fff; }
     .details { padding:8px 24px 20px; }
     .row { display:grid; grid-template-columns:32px minmax(0,1fr); gap:12px; padding:16px 0; border-bottom:1px solid var(--line); }
     .row:last-child { border-bottom:0; }
     .icon { width:24px; height:24px; fill:none; stroke:var(--green); stroke-linecap:round; stroke-linejoin:round; stroke-width:1.8; }
     h2 { margin:0 0 5px; font-size:15px; letter-spacing:.5px; text-transform:uppercase; }
     p { margin:0; color:var(--muted); line-height:1.5; }
+    .multiline { white-space:pre-line; }
+    .file-module { margin-top:18px; padding:22px 24px; border:1px solid var(--line); border-radius:8px; background:var(--surface); }
+    .file-list { display:grid; gap:10px; }
+    .file-item { display:flex; justify-content:space-between; gap:14px; align-items:center; padding:12px 0; border-bottom:1px solid var(--line); }
+    .file-item:last-child { border-bottom:0; }
+    .file-actions { display:flex; flex-wrap:wrap; gap:10px; }
+    .partner-module { margin-top:18px; padding:22px 24px; border:1px solid var(--line); border-radius:8px; background:var(--surface); }
+    .partner-module h2 { margin-bottom:14px; color:var(--navy); }
+    .partner-filters { display:grid; grid-template-columns:minmax(180px,1fr) 180px auto; gap:10px; align-items:end; margin-bottom:14px; }
+    label { display:block; color:var(--muted); font-size:13px; font-weight:bold; }
+    input,select { width:100%; margin-top:5px; padding:10px; border:1px solid var(--line); border-radius:5px; background:#fff; font:inherit; }
+    button { min-height:38px; padding:9px 13px; border:1px solid var(--green); border-radius:5px; background:var(--green); color:#fff; font:inherit; cursor:pointer; }
+    .partner-list { overflow:hidden; border:1px solid var(--line); border-radius:8px; }
+    .partner-row { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,1fr); gap:14px; padding:14px; border-bottom:1px solid var(--line); }
+    .partner-row:last-child { border-bottom:0; }
+    .partner-name { margin:0 0 5px; color:var(--green); font-weight:bold; }
+    .partner-tags { display:flex; flex-wrap:wrap; align-items:flex-start; align-content:flex-start; gap:6px; }
+    .partner-tag { display:inline-flex; align-items:center; max-width:100%; min-height:26px; padding:4px 8px; border:1px solid #cbd7e2; border-radius:999px; color:var(--green); font-size:12px; font-weight:bold; line-height:1.2; overflow-wrap:anywhere; }
+    .partner-links { display:flex; flex-wrap:wrap; gap:10px; }
+    .pager { display:flex; justify-content:space-between; gap:10px; align-items:center; margin-top:12px; }
+    .portal-meta { color:var(--muted); font-size:13px; }
+    .pager-buttons { display:flex; gap:8px; }
+    .secondary { border-color:var(--line); background:#fff; color:var(--navy); }
+    .empty { padding:20px; color:var(--muted); text-align:center; }
+    @media(max-width:680px){.partner-filters,.partner-row{grid-template-columns:1fr}.pager{align-items:stretch;flex-direction:column}.file-item{align-items:flex-start;flex-direction:column}}
   </style>
 </head>
 <body>
@@ -35,6 +60,26 @@
       </header>
       <section class="details" id="details"></section>
     </article>
+    <section class="file-module" id="file-module" hidden>
+      <h2>Filer</h2>
+      <div class="file-list" id="file-list"></div>
+    </section>
+    <section class="partner-module" id="partner-module" hidden>
+      <h2>Partnere</h2>
+      <form class="partner-filters" id="partner-filters">
+        <label>Søg<input name="search" placeholder="Navn, firma, e-mail eller branche"></label>
+        <label>Branche<select name="labelId" id="partner-label"><option value="">Alle brancher</option></select></label>
+        <button>Filtrer</button>
+      </form>
+      <div class="partner-list" id="partner-list"><div class="empty">Henter partnere...</div></div>
+      <div class="pager">
+        <span class="portal-meta" id="partner-count"></span>
+        <div class="pager-buttons">
+          <button type="button" class="secondary" id="partner-prev">Forrige</button>
+          <button type="button" class="secondary" id="partner-next">Næste</button>
+        </div>
+      </div>
+    </section>
   </main>
   <script src="portal-data.js?v=20260604-02"></script><script src="portal-header.js?v=20260604-02"></script>
   <script>
@@ -42,28 +87,93 @@
       partners:'<svg class="icon" viewBox="0 0 24 24"><path d="M16 20v-1.5a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4V20"/><circle cx="9" cy="7" r="3"/><path d="M22 20v-1.5a4 4 0 0 0-3-3.85M16 4.15a3 3 0 0 1 0 5.7"/></svg>',
       program:'<svg class="icon" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
       location:'<svg class="icon" viewBox="0 0 24 24"><path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0z"/><circle cx="12" cy="10" r="2.5"/></svg>',
-      files:'<svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>',
-      guests:'<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"/><path d="M5.5 21a6.5 6.5 0 0 1 13 0"/></svg>',
-      invite:'<svg class="icon" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.1-.1l-2 2A5 5 0 0 0 12 20l1.1-1.1"/></svg>'
+      guests:'<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"/><path d="M5.5 21a6.5 6.5 0 0 1 13 0"/></svg>'
     };
-    var labels = { partners:"Partnere", program:"Program", location:"Lokation", files:"Filer", guests:"G\u00e6ster", invite:"Invi-link" };
-    var id = new URLSearchParams(location.search).get("id");
+    var labels = { program:"Program", location:"Lokation", guests:"G\u00e6ster" };
+    var id = new URLSearchParams(location.search).get("id"), currentMeeting = null, partnerPage = 1, partnerTotal = 0, partnerPageSize = 8;
+    function bytes(n){n=Number(n||0);if(n<1024)return n+" B";if(n<1048576)return Math.round(n/1024)+" KB";return(Math.round(n/104857.6)/10)+" MB"}
+    function partnerParameters() {
+      var data = Object.fromEntries(new FormData(document.getElementById("partner-filters")));
+      data.id = currentMeeting.id || currentMeeting.slug;
+      data.page = partnerPage;
+      data.pageSize = partnerPageSize;
+      return data;
+    }
+    function link(url, label) {
+      return url ? '<a href="'+PortalData.escape(url)+'" target="_blank" rel="noopener">'+label+'</a>' : "";
+    }
+    function renderPartnerRows(data) {
+      var rows = data.partners || [];
+      partnerTotal = data.total || 0;
+      if (data.labels && !document.getElementById("partner-label").dataset.loaded) {
+        document.getElementById("partner-label").innerHTML = '<option value="">Alle brancher</option>' + data.labels.map(function(label) {
+          return '<option value="'+label.id+'">'+PortalData.escape(label.name)+'</option>';
+        }).join("");
+        document.getElementById("partner-label").dataset.loaded = "1";
+      }
+      document.getElementById("partner-count").textContent = partnerTotal ? "Viser " + (((partnerPage-1)*partnerPageSize)+1) + "-" + Math.min(partnerPage*partnerPageSize, partnerTotal) + " af " + partnerTotal + " partnere" : "Ingen partnere matcher filteret";
+      document.getElementById("partner-prev").disabled = partnerPage <= 1;
+      document.getElementById("partner-next").disabled = partnerPage * partnerPageSize >= partnerTotal;
+      if (!rows.length) {
+        document.getElementById("partner-list").innerHTML = '<div class="empty">Ingen partnere matcher filteret.</div>';
+        return;
+      }
+      document.getElementById("partner-list").innerHTML = rows.map(function(partner) {
+        var name = partner.id ? '<a class="partner-name" href="partner-profil.html?id='+encodeURIComponent(partner.id)+'">'+PortalData.escape(partner.name)+'</a>' : '<p class="partner-name">'+PortalData.escape(partner.name)+'</p>';
+        var tags = (partner.labels || "").split(",").map(function(x){return x.trim();}).filter(Boolean).map(function(label){return '<span class="partner-tag">'+PortalData.escape(label)+'</span>';}).join("");
+        var links = [partner.email ? '<a href="mailto:'+PortalData.escape(partner.email)+'">'+PortalData.escape(partner.email)+'</a>' : "", link(partner.linkedin, "LinkedIn"), link(partner.companyUrl, "Hjemmeside")].filter(Boolean).join("");
+        return '<div class="partner-row"><div>'+name+'<p>'+PortalData.escape(partner.company || "")+'</p></div><div class="partner-tags">'+(tags || '<span class="portal-meta">Ingen branchelabels</span>')+'</div><div class="partner-links">'+(links || '<span class="portal-meta">Ingen kontaktinfo</span>')+'</div></div>';
+      }).join("");
+    }
+    async function loadPartners() {
+      document.getElementById("partner-module").hidden = false;
+      try {
+        renderPartnerRows(await PortalData.meetingPartners(partnerParameters()));
+      } catch (error) {
+        document.getElementById("partner-list").innerHTML = '<div class="empty">Log ind for at se mødets partnere.</div>';
+        document.getElementById("partner-count").textContent = "";
+        document.getElementById("partner-prev").disabled = true;
+        document.getElementById("partner-next").disabled = true;
+      }
+    }
+    async function loadFiles() {
+      try {
+        var files = await PortalData.publicMeetingAttachments(currentMeeting.id);
+        if (!files.length) return;
+        document.getElementById("file-module").hidden = false;
+        document.getElementById("file-list").innerHTML = files.map(function(file) {
+          var base = 'api/index.php?action=meeting-download-attachment&attachmentId=' + encodeURIComponent(file.id);
+          return '<div class="file-item"><div><strong>'+PortalData.escape(file.name)+'</strong><br><span class="portal-meta">'+bytes(file.size)+' · '+PortalData.escape(file.mimeType)+'</span></div><div class="file-actions"><a href="'+base+'&preview=1" target="_blank" rel="noopener">Vis</a><a href="'+base+'">Download</a></div></div>';
+        }).join("");
+      } catch (error) {
+        if (currentMeeting.files) return;
+        document.getElementById("file-module").hidden = false;
+        document.getElementById("file-list").innerHTML = '<div class="empty">Log ind for at se mødets filer.</div>';
+      }
+    }
     PortalData.meetings().then(function (meetings) { return meetings.find(function (meeting) { return meeting.id === id || meeting.slug === id; }); }).then(function (meeting) {
       if (!meeting) throw new Error("Meeting not found.");
+      currentMeeting = meeting;
       document.title = meeting.title + " | Partnerportal";
       document.getElementById("title").textContent = meeting.title;
       document.getElementById("date").textContent = new Date(meeting.date + "T00:00:00").toLocaleDateString("da-DK", { day:"numeric", month:"long", year:"numeric" });
       document.getElementById("time").textContent = "kl. " + meeting.time;
       document.getElementById("address").textContent = meeting.address;
       document.getElementById("details").innerHTML = Object.keys(labels).map(function (key) {
-        return '<div class="row">' + icons[key] + '<div><h2>' + labels[key] + '</h2><p>' + PortalData.escape(meeting[key] || "Ikke tilf\u00f8jet endnu") + '</p></div></div>';
+        return '<div class="row">' + icons[key] + '<div><h2>' + labels[key] + '</h2><p class="multiline">' + PortalData.escape(meeting[key] || "Ikke tilf\u00f8jet endnu") + '</p></div></div>';
       }).join("");
+      loadFiles();
+      loadPartners();
     }).catch(function () {
       document.getElementById("title").textContent = "M\u00f8det kunne ikke hentes";
     });
+    document.getElementById("partner-filters").onsubmit = function (event) { event.preventDefault(); partnerPage = 1; loadPartners(); };
+    document.getElementById("partner-prev").onclick = function () { if (partnerPage > 1) { partnerPage--; loadPartners(); } };
+    document.getElementById("partner-next").onclick = function () { if (partnerPage * partnerPageSize < partnerTotal) { partnerPage++; loadPartners(); } };
   </script>
 </body>
 </html>
+
 
 
 
