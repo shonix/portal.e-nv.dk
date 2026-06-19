@@ -19,6 +19,34 @@ function nullable(array $body, string $field): ?string
     return $value === '' ? null : $value;
 }
 
+function idList(array $body, string $multiField, string $singleField = ''): array
+{
+    $values = $body[$multiField] ?? [];
+    if (!is_array($values)) {
+        $values = [$values];
+    }
+    if (!$values && $singleField !== '' && trim((string) ($body[$singleField] ?? '')) !== '') {
+        $values = [$body[$singleField]];
+    }
+    $ids = [];
+    foreach ($values as $value) {
+        $id = (int) $value;
+        if ($id > 0) $ids[$id] = $id;
+    }
+    return array_values($ids);
+}
+
+function syncMeetingGroups(PDO $pdo, int $meetingId, array $groupIds): void
+{
+    $pdo->prepare('DELETE FROM meeting_groups WHERE meeting_id = :meeting_id')->execute(['meeting_id' => $meetingId]);
+    $insert = $pdo->prepare(
+        'INSERT INTO meeting_groups (meeting_id, group_id) VALUES (:meeting_id, :group_id) ON CONFLICT DO NOTHING'
+    );
+    foreach ($groupIds as $groupId) {
+        $insert->execute(['meeting_id' => $meetingId, 'group_id' => (int) $groupId]);
+    }
+}
+
 function accountInvitationUrl(string $token): string
 {
     $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
@@ -172,17 +200,28 @@ if ($method === 'GET' && $action === 'my-groups') {
 }
 
 if ($method === 'GET' && $action === 'meetings') {
-    respond(['meetings' => $pdo->query(
+    $meetings = $pdo->query(
         'SELECT m.id::text, m.slug, m.title, m.meeting_date::text AS "date",
                 to_char(m.meeting_time, \'HH24:MI\') AS "time", m.address, m.status,
                 m.partners_text AS "partners", m.program_text AS "program",
                 m.location_text AS "location", m.files_text AS "files",
                 m.guests_text AS "guests", m.invite_text AS "invite",
-                m.group_id::text AS "groupId", g.name AS "groupName",
+                MIN(g.id)::text AS "groupId",
+                COALESCE(json_agg(DISTINCT g.id::text) FILTER (WHERE g.id IS NOT NULL), \'[]\'::json) AS "groupIds",
+                COALESCE(string_agg(DISTINCT g.name, \', \' ORDER BY g.name), \'\') AS "groupName",
+                COALESCE(string_agg(DISTINCT g.name, \', \' ORDER BY g.name), \'\') AS "groupNames",
                 m.rsvp_approval_mode AS "approvalMode"
-         FROM meetings m LEFT JOIN groups g ON g.id = m.group_id
+         FROM meetings m
+         LEFT JOIN meeting_groups mg ON mg.meeting_id = m.id
+         LEFT JOIN groups g ON g.id = mg.group_id
+         GROUP BY m.id
          ORDER BY m.meeting_date DESC, m.meeting_time DESC'
-    )->fetchAll()]);
+    )->fetchAll();
+    foreach ($meetings as &$meeting) {
+        $meeting['groupIds'] = json_decode((string) $meeting['groupIds'], true) ?: [];
+    }
+    unset($meeting);
+    respond(['meetings' => $meetings]);
 }
 
 if ($method === 'GET' && $action === 'labels') {
@@ -653,6 +692,8 @@ if ($method === 'POST' && $action === 'admin-meetings') {
     requireAdmin();
     $body = requestBody();
     required($body, ['title', 'date', 'time', 'address']);
+    $groupIds = idList($body, 'groupIds', 'groupId');
+    $pdo->beginTransaction();
     $statement = $pdo->prepare(
         'INSERT INTO meetings (slug, title, meeting_date, meeting_time, address, status, group_id, partners_text, program_text, location_text, files_text, guests_text, invite_text, rsvp_approval_mode)
          VALUES (:slug, :title, :meeting_date, :meeting_time, :address, :status, :group_id, :partners, :program, :location, :files, :guests, :invite, :approval_mode)
@@ -661,19 +702,24 @@ if ($method === 'POST' && $action === 'admin-meetings') {
     $statement->execute([
         'slug' => slugify((string) $body['title']) . '-' . time(), 'title' => trim((string) $body['title']),
         'meeting_date' => $body['date'], 'meeting_time' => $body['time'], 'address' => trim((string) $body['address']),
-        'status' => $body['status'] ?? 'upcoming', 'group_id' => nullable($body, 'groupId'),
+        'status' => $body['status'] ?? 'upcoming', 'group_id' => $groupIds[0] ?? null,
         'partners' => nullable($body, 'partners'), 'program' => nullable($body, 'program'),
         'location' => nullable($body, 'location'), 'files' => nullable($body, 'files'),
         'guests' => nullable($body, 'guests'), 'invite' => nullable($body, 'invite'),
         'approval_mode' => ($body['approvalMode'] ?? 'automatic') === 'manual' ? 'manual' : 'automatic',
     ]);
-    respond(['meeting' => $statement->fetch()], 201);
+    $meeting = $statement->fetch();
+    syncMeetingGroups($pdo, (int) $meeting['id'], $groupIds);
+    $pdo->commit();
+    respond(['meeting' => $meeting], 201);
 }
 
 if ($method === 'POST' && $action === 'admin-update-meeting') {
     requireAdmin();
     $body = requestBody();
     required($body, ['meetingId', 'title', 'date', 'time', 'address']);
+    $groupIds = idList($body, 'groupIds', 'groupId');
+    $pdo->beginTransaction();
     $statement = $pdo->prepare(
         'UPDATE meetings SET title = :title, meeting_date = :meeting_date, meeting_time = :meeting_time,
              address = :address, status = :status, group_id = :group_id, partners_text = :partners,
@@ -690,7 +736,7 @@ if ($method === 'POST' && $action === 'admin-update-meeting') {
         'meeting_time' => $body['time'],
         'address' => trim((string) $body['address']),
         'status' => $body['status'] ?? 'upcoming',
-        'group_id' => nullable($body, 'groupId'),
+        'group_id' => $groupIds[0] ?? null,
         'partners' => nullable($body, 'partners'),
         'program' => nullable($body, 'program'),
         'location' => nullable($body, 'location'),
@@ -702,7 +748,12 @@ if ($method === 'POST' && $action === 'admin-update-meeting') {
             : null,
     ]);
     $meeting = $statement->fetch();
-    if (!$meeting) respond(['error' => 'Mødet findes ikke.'], 404);
+    if (!$meeting) {
+        $pdo->rollBack();
+        respond(['error' => 'Mødet findes ikke.'], 404);
+    }
+    syncMeetingGroups($pdo, (int) $meeting['id'], $groupIds);
+    $pdo->commit();
     respond(['meeting' => $meeting]);
 }
 
