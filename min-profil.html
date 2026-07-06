@@ -16,6 +16,9 @@
     .notice{color:var(--green)}
     .required{color:#c92b2b}.hint{color:var(--muted);font-size:13px}
     input[readonly]{background:#f1f4f6;color:#536174}
+    .picture-row{display:flex;gap:16px;align-items:center;margin:16px 0 4px}
+    .profile-preview{display:flex;width:86px;height:86px;flex:0 0 86px;align-items:center;justify-content:center;overflow:hidden;border-radius:50%;background:var(--green);color:#fff;font-size:30px;font-weight:bold}
+    .profile-preview img{width:100%;height:100%;object-fit:cover}
     .picker{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;margin-top:5px}.picker select{width:100%;padding:10px;border:1px solid var(--line);border-radius:5px;background:#fff}.selected-tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.tag{display:inline-flex;gap:7px;align-items:center;padding:6px 9px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--navy);font-size:13px}.tag button{margin:0;padding:0;border:0;background:transparent;color:#c92b2b}
   </style>
 </head>
@@ -26,6 +29,10 @@
     <p>Opret eller opdater din profil.</p>
     <p class="hint"><span class="required">*</span> P&aring;kr&aelig;vet felt</p>
     <form id="form">
+      <div class="picture-row">
+        <div class="profile-preview" id="profile-preview">?</div>
+        <label>Profilbillede<input name="profilePicture" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"><span class="hint">JPG, PNG eller WebP. Maks. 2 MB.</span></label>
+      </div>
       <label>Navn <span class="required">*</span><input name="name" required></label>
       <label>LinkedIn<input name="linkedin" type="url"></label>
       <label>Virksomhed<input name="company"></label>
@@ -52,6 +59,14 @@
       }
     }
     var availableLabels = [], selectedLabelIds = [];
+    function renderPreview(partner) {
+      var preview = document.getElementById("profile-preview");
+      if (partner && partner.profileImageUrl) {
+        preview.innerHTML = '<img src="' + PortalData.escape(partner.profileImageUrl) + '" alt="">';
+      } else {
+        preview.textContent = (form.elements.name.value || "?").charAt(0).toUpperCase();
+      }
+    }
     function labelName(id) {
       var label = availableLabels.find(function (item) { return String(item.id) === String(id); });
       return label ? label.name : "Branche " + id;
@@ -88,6 +103,7 @@
         form.elements.email.value = session.email || partner.email || "";
         showLink(partner);
       }
+      renderPreview(partner);
     });
     document.getElementById("add-label").onclick = function () {
       var select = document.getElementById("label-picker");
@@ -100,10 +116,16 @@
       event.preventDefault();
       try {
         var data = Object.fromEntries(new FormData(form));
+        delete data.profilePicture;
         data.labelIds = selectedLabelIds.slice();
         var result = await PortalData.saveMyProfile(data);
+        if (form.elements.profilePicture.files[0]) {
+          result = await PortalData.uploadProfilePicture(form.elements.profilePicture.files[0]);
+          form.elements.profilePicture.value = "";
+        }
         notice.textContent = "Profilen er gemt.";
         showLink(result.partner);
+        renderPreview(result.partner || data);
       } catch (problem) {
         notice.textContent = problem.message;
       }

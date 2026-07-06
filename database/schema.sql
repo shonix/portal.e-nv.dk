@@ -18,6 +18,9 @@ CREATE TABLE IF NOT EXISTS partners (
   email TEXT NOT NULL,
   phone TEXT,
   biography TEXT,
+  profile_picture_stored_name TEXT UNIQUE,
+  profile_picture_mime_type TEXT,
+  profile_picture_size BIGINT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -58,6 +61,10 @@ CREATE TABLE IF NOT EXISTS meeting_groups (
 );
 
 ALTER TABLE partners ADD COLUMN IF NOT EXISTS user_id BIGINT UNIQUE REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE partners
+  ADD COLUMN IF NOT EXISTS profile_picture_stored_name TEXT UNIQUE,
+  ADD COLUMN IF NOT EXISTS profile_picture_mime_type TEXT,
+  ADD COLUMN IF NOT EXISTS profile_picture_size BIGINT;
 ALTER TABLE meetings ADD COLUMN IF NOT EXISTS group_id BIGINT REFERENCES groups(id) ON DELETE SET NULL;
 INSERT INTO meeting_groups (meeting_id, group_id)
 SELECT id, group_id FROM meetings WHERE group_id IS NOT NULL

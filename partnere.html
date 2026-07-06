@@ -100,6 +100,13 @@
       font-weight: bold;
     }
 
+    .avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 50%;
+    }
+
     h2 {
       margin: 0 0 4px;
       color: var(--green);
@@ -146,8 +153,9 @@
       });
     }).then(function (partners) {
       document.getElementById("profile-grid").innerHTML = partners.length ? partners.map(function (partner) {
+        var avatar = partner.profileImageUrl ? '<img src="' + PortalData.escape(partner.profileImageUrl) + '" alt="">' : PortalData.escape(partner.name.charAt(0));
         return '<a class="profile-card" href="partner-profil.html?id=' + encodeURIComponent(partner.id) + '"><span class="avatar">' +
-          PortalData.escape(partner.name.charAt(0)) + '</span><span><h2>' + PortalData.escape(partner.name) + '</h2>' +
+          avatar + '</span><span><h2>' + PortalData.escape(partner.name) + '</h2>' +
           (partner.company ? '<p>' + PortalData.escape(partner.company) + '</p>' : '') +
           '<p class="labels">' + PortalData.escape(partner.labels || "") + '</p></span></a>';
       }).join("") : '<p>Der er endnu ingen partnerprofiler i dine grupper.</p>';

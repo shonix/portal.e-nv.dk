@@ -76,6 +76,13 @@
       font-weight: bold;
     }
 
+    .avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 50%;
+    }
+
     h1 {
       margin: 16px 0 5px;
       font-size: 34px;
@@ -184,7 +191,9 @@
     }).then(function (partner) {
       if (!partner) throw new Error("Partner not found.");
       document.title = partner.name + " | Partnerportal";
-      document.getElementById("avatar").textContent = partner.name.charAt(0);
+      var avatar = document.getElementById("avatar");
+      if (partner.profileImageUrl) avatar.innerHTML = '<img src="' + PortalData.escape(partner.profileImageUrl) + '" alt="">';
+      else avatar.textContent = partner.name.charAt(0);
       document.getElementById("name").textContent = partner.name;
       document.getElementById("company-heading").textContent = partner.company || "";
       document.getElementById("biography").textContent = partner.biography || "";

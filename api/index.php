@@ -67,6 +67,33 @@ function accountInvitationUrl(string $token): string
         . '/registrer.html?token=' . urlencode($token);
 }
 
+function profilePictureDirectory(array $config): string
+{
+    return (string) ($config['profile_picture_dir'] ?? (dirname(__DIR__, 2) . '/portal-private/profile-pictures'));
+}
+
+function profilePictureUrl(array $partner): ?string
+{
+    if (empty($partner['profilePictureStoredName']) || empty($partner['id'])) return null;
+    return 'api/index.php?action=profile-picture&partnerId=' . urlencode((string) $partner['id'])
+        . '&v=' . urlencode((string) $partner['profilePictureStoredName']);
+}
+
+function attachProfilePictureUrl(?array &$partner): void
+{
+    if (!$partner) return;
+    $partner['profileImageUrl'] = profilePictureUrl($partner);
+    unset($partner['profilePictureStoredName']);
+}
+
+function attachProfilePictureUrls(array &$partners): void
+{
+    foreach ($partners as &$partner) {
+        attachProfilePictureUrl($partner);
+    }
+    unset($partner);
+}
+
 if ($method === 'POST' && $action === 'login') {
     $body = requestBody();
     $statement = $pdo->prepare('SELECT id, email, password_hash, role FROM users WHERE email = :email');
@@ -89,7 +116,9 @@ if ($method === 'POST' && $action === 'register') {
     }
     $invite = $pdo->prepare(
         'SELECT id, email FROM invitations
-         WHERE token_hash = :token_hash AND used_at IS NULL AND expires_at > NOW()
+         WHERE token_hash = :token_hash AND used_at IS NULL
+         -- Re-enable this later if user invitations should expire again:
+         -- AND expires_at > NOW()
          FOR UPDATE'
     );
     $pdo->beginTransaction();
@@ -97,7 +126,7 @@ if ($method === 'POST' && $action === 'register') {
     $invitation = $invite->fetch();
     if (!$invitation) {
         $pdo->rollBack();
-        respond(['error' => 'Invitation is invalid or has expired.'], 422);
+        respond(['error' => 'Invitation is invalid or has already been used.'], 422);
     }
     $statement = $pdo->prepare(
         "INSERT INTO users (email, password_hash, role) VALUES (:email, :password_hash, 'member')
@@ -186,6 +215,111 @@ if ($method === 'GET' && $action === 'session') {
         $email = $statement->fetchColumn() ?: null;
     }
     respond(['loggedIn' => isset($_SESSION['user_id']), 'id' => isset($_SESSION['user_id']) ? (string) $_SESSION['user_id'] : null, 'role' => $_SESSION['role'] ?? null, 'email' => $email]);
+}
+
+if ($method === 'POST' && $action === 'profile-picture') {
+    requireLogin();
+    $file = $_FILES['file'] ?? null;
+    if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        respond(['error' => 'Vælg et profilbillede.'], 422);
+    }
+    $maxSize = (int) ($config['profile_picture_max_bytes'] ?? 2 * 1024 * 1024);
+    if ((int) $file['size'] > $maxSize) respond(['error' => 'Profilbilledet er for stort.'], 422);
+    $extension = strtolower(pathinfo((string) $file['name'], PATHINFO_EXTENSION));
+    $allowed = [
+        'jpg' => ['image/jpeg'], 'jpeg' => ['image/jpeg'],
+        'png' => ['image/png'], 'webp' => ['image/webp'],
+    ];
+    if (!isset($allowed[$extension])) respond(['error' => 'Brug JPG, PNG eller WebP.'], 422);
+    $mime = (new finfo(FILEINFO_MIME_TYPE))->file((string) $file['tmp_name']) ?: 'application/octet-stream';
+    if (!in_array($mime, $allowed[$extension], true) || !getimagesize((string) $file['tmp_name'])) {
+        respond(['error' => 'Filen ligner ikke et gyldigt billede.'], 422);
+    }
+    $partnerStatement = $pdo->prepare(
+        'SELECT id::text, profile_picture_stored_name AS "profilePictureStoredName"
+         FROM partners WHERE user_id = :user_id'
+    );
+    $partnerStatement->execute(['user_id' => $userId]);
+    $partner = $partnerStatement->fetch();
+    if (!$partner) respond(['error' => 'Gem profilen, før du uploader et profilbillede.'], 422);
+    $directory = profilePictureDirectory($config);
+    if (!is_dir($directory) && !mkdir($directory, 0750, true) && !is_dir($directory)) {
+        respond(['error' => 'Uploadmappen kunne ikke oprettes.'], 500);
+    }
+    $directory = realpath($directory) ?: '';
+    if ($directory === '') respond(['error' => 'Uploadmappen kunne ikke valideres.'], 500);
+    $storedName = bin2hex(random_bytes(20)) . '.' . ($extension === 'jpeg' ? 'jpg' : $extension);
+    $destination = $directory . DIRECTORY_SEPARATOR . $storedName;
+    if (!move_uploaded_file((string) $file['tmp_name'], $destination)) {
+        respond(['error' => 'Profilbilledet kunne ikke gemmes.'], 500);
+    }
+    $oldName = (string) ($partner['profilePictureStoredName'] ?? '');
+    try {
+        $pdo->prepare(
+            'UPDATE partners
+             SET profile_picture_stored_name = :stored_name,
+                 profile_picture_mime_type = :mime_type,
+                 profile_picture_size = :file_size
+             WHERE id = :id'
+        )->execute([
+            'stored_name' => $storedName,
+            'mime_type' => $mime,
+            'file_size' => (int) $file['size'],
+            'id' => (int) $partner['id'],
+        ]);
+    } catch (Throwable $exception) {
+        @unlink($destination);
+        throw $exception;
+    }
+    if ($oldName !== '') {
+        $oldPath = $directory . DIRECTORY_SEPARATOR . basename($oldName);
+        if (is_file($oldPath)) @unlink($oldPath);
+    }
+    $partner['profilePictureStoredName'] = $storedName;
+    attachProfilePictureUrl($partner);
+    respond(['partner' => $partner]);
+}
+
+if ($method === 'GET' && $action === 'profile-picture') {
+    requireLogin();
+    $partnerId = (int) ($_GET['partnerId'] ?? 0);
+    if ($partnerId <= 0) respond(['error' => 'Partner is required.'], 422);
+    $statement = $pdo->prepare(
+        'SELECT p.id, p.profile_picture_stored_name, p.profile_picture_mime_type, p.profile_picture_size
+         FROM partners p
+         JOIN users profile_owner ON profile_owner.id = p.user_id
+           OR (p.user_id IS NULL AND LOWER(TRIM(profile_owner.email)) = LOWER(TRIM(p.email)))
+         WHERE p.id = :partner_id
+           AND p.profile_picture_stored_name IS NOT NULL
+           AND (
+              :is_admin = 1
+              OR profile_owner.id = :owner_user_id
+              OR EXISTS (
+                  SELECT 1
+                  FROM group_members viewer_groups
+                  JOIN group_members partner_groups ON partner_groups.group_id = viewer_groups.group_id
+                  WHERE viewer_groups.user_id = :viewer_user_id
+                    AND partner_groups.user_id = profile_owner.id
+              )
+           )'
+    );
+    $statement->execute([
+        'partner_id' => $partnerId,
+        'is_admin' => ($_SESSION['role'] ?? null) === 'admin' ? 1 : 0,
+        'owner_user_id' => $userId,
+        'viewer_user_id' => $userId,
+    ]);
+    $picture = $statement->fetch();
+    if (!$picture) respond(['error' => 'Profilbilledet findes ikke.'], 404);
+    $path = profilePictureDirectory($config) . DIRECTORY_SEPARATOR . basename((string) $picture['profile_picture_stored_name']);
+    if (!is_file($path)) respond(['error' => 'Profilbilledet mangler på serveren.'], 404);
+    header_remove('Content-Type');
+    header('Content-Type: ' . $picture['profile_picture_mime_type']);
+    header('Content-Length: ' . (string) $picture['profile_picture_size']);
+    header('Cache-Control: private, max-age=86400');
+    session_write_close();
+    readfile($path);
+    exit;
 }
 
 if ($method === 'GET' && $action === 'groups') {
@@ -296,20 +430,24 @@ if ($method === 'GET' && $action === 'admin-labels') {
 if ($method === 'GET' && $action === 'partners') {
     requireLogin();
     if (($_SESSION['role'] ?? null) === 'admin') {
-        respond(['partners' => $pdo->query(
+        $partners = $pdo->query(
             'SELECT p.id::text, p.slug, p.name, p.linkedin_url AS "linkedin", p.industry, p.company,
-                    p.company_url AS "companyUrl", p.email, p.phone, p.biography,
-                    COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels
-             FROM partners p
-             LEFT JOIN partner_profile_labels ppl ON ppl.partner_id = p.id
-             LEFT JOIN partner_labels l ON l.id = ppl.label_id
-             GROUP BY p.id ORDER BY p.name'
-        )->fetchAll()]);
+                     p.company_url AS "companyUrl", p.email, p.phone, p.biography,
+                     p.profile_picture_stored_name AS "profilePictureStoredName",
+                     COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels
+              FROM partners p
+              LEFT JOIN partner_profile_labels ppl ON ppl.partner_id = p.id
+              LEFT JOIN partner_labels l ON l.id = ppl.label_id
+              GROUP BY p.id ORDER BY p.name'
+        )->fetchAll();
+        attachProfilePictureUrls($partners);
+        respond(['partners' => $partners]);
     }
     $statement = $pdo->prepare(
         'SELECT p.id::text, p.slug, p.name, p.linkedin_url AS "linkedin",
-                p.industry, p.company, p.company_url AS "companyUrl", p.email, p.phone, p.biography,
-                COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels
+                 p.industry, p.company, p.company_url AS "companyUrl", p.email, p.phone, p.biography,
+                 p.profile_picture_stored_name AS "profilePictureStoredName",
+                 COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels
          FROM partners p
          JOIN users profile_owner ON profile_owner.id = p.user_id
            OR (p.user_id IS NULL AND LOWER(TRIM(profile_owner.email)) = LOWER(TRIM(p.email)))
@@ -327,7 +465,9 @@ if ($method === 'GET' && $action === 'partners') {
          ORDER BY p.name'
     );
     $statement->execute(['owner_user_id' => $userId, 'viewer_user_id' => $userId]);
-    respond(['partners' => $statement->fetchAll()]);
+    $partners = $statement->fetchAll();
+    attachProfilePictureUrls($partners);
+    respond(['partners' => $partners]);
 }
 
 if ($method === 'GET' && $action === 'group-partners') {
@@ -347,8 +487,9 @@ if ($method === 'GET' && $action === 'group-partners') {
     $group->execute(['group_id' => $groupId]);
     $partners = $pdo->prepare(
         'SELECT p.id::text, p.slug, p.name, p.linkedin_url AS "linkedin",
-                p.industry, p.company, p.company_url AS "companyUrl", p.email, p.phone, p.biography,
-                COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels
+                 p.industry, p.company, p.company_url AS "companyUrl", p.email, p.phone, p.biography,
+                 p.profile_picture_stored_name AS "profilePictureStoredName",
+                 COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels
          FROM partners p
          JOIN users profile_owner ON profile_owner.id = p.user_id
            OR (p.user_id IS NULL AND LOWER(TRIM(profile_owner.email)) = LOWER(TRIM(p.email)))
@@ -358,7 +499,9 @@ if ($method === 'GET' && $action === 'group-partners') {
          WHERE gm.group_id = :group_id GROUP BY p.id ORDER BY p.name'
     );
     $partners->execute(['group_id' => $groupId]);
-    respond(['group' => $group->fetch(), 'partners' => $partners->fetchAll()]);
+    $partnerRows = $partners->fetchAll();
+    attachProfilePictureUrls($partnerRows);
+    respond(['group' => $group->fetch(), 'partners' => $partnerRows]);
 }
 
 if ($method === 'GET' && $action === 'meeting-partners') {
@@ -437,6 +580,7 @@ if ($method === 'GET' && $action === 'meeting-partners') {
         $partners = $pdo->prepare(
             'SELECT p.id::text, p.slug, p.name, p.company, p.email,
                     p.linkedin_url AS "linkedin", p.company_url AS "companyUrl",
+                    p.profile_picture_stored_name AS "profilePictureStoredName",
                     COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels'
             . $listSql .
             ' GROUP BY p.id
@@ -462,9 +606,11 @@ if ($method === 'GET' && $action === 'meeting-partners') {
              ORDER BY l.name'
         );
         $labels->execute(['meeting_id' => (int) $meeting['id']]);
+        $partnerRows = $partners->fetchAll();
+        attachProfilePictureUrls($partnerRows);
         respond([
             'source' => 'groups',
-            'partners' => $partners->fetchAll(),
+            'partners' => $partnerRows,
             'labels' => $labels->fetchAll(),
             'total' => $total,
             'page' => $page,
@@ -495,6 +641,7 @@ if ($method === 'GET' && $action === 'partner-detail') {
     $statement = $pdo->prepare(
         'SELECT p.id::text, p.slug, p.name, p.linkedin_url AS "linkedin",
                 p.industry, p.company, p.company_url AS "companyUrl", p.email, p.phone, p.biography,
+                p.profile_picture_stored_name AS "profilePictureStoredName",
                 COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels
          FROM partners p
          JOIN users profile_owner ON profile_owner.id = p.user_id
@@ -536,7 +683,9 @@ if ($method === 'GET' && $action === 'partner-detail') {
         'checked_group_id' => $groupId,
         'group_viewer_user_id' => $userId,
     ]);
-    respond(['partner' => $statement->fetch() ?: null]);
+    $partner = $statement->fetch() ?: null;
+    attachProfilePictureUrl($partner);
+    respond(['partner' => $partner]);
 }
 
 if ($method === 'GET' && $action === 'my-profile') {
@@ -544,6 +693,7 @@ if ($method === 'GET' && $action === 'my-profile') {
     $statement = $pdo->prepare(
         'SELECT p.id::text, p.slug, p.name, p.linkedin_url AS "linkedin", p.industry, p.company,
                 p.company_url AS "companyUrl", p.email, p.phone, p.biography,
+                p.profile_picture_stored_name AS "profilePictureStoredName",
                 COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels,
                 COALESCE(json_agg(DISTINCT l.id::text) FILTER (WHERE l.id IS NOT NULL), \'[]\'::json) AS "labelIds"
          FROM partners p
@@ -555,6 +705,7 @@ if ($method === 'GET' && $action === 'my-profile') {
     $partner = $statement->fetch() ?: null;
     if ($partner) {
         $partner['labelIds'] = json_decode((string) $partner['labelIds'], true) ?: [];
+        attachProfilePictureUrl($partner);
     }
     respond(['partner' => $partner]);
 }
@@ -614,6 +765,7 @@ if ($method === 'GET' && $action === 'admin-profile') {
     $statement = $pdo->prepare(
         'SELECT p.id::text, p.slug, p.name, p.linkedin_url AS "linkedin", p.industry, p.company,
                 p.company_url AS "companyUrl", p.email, p.phone, p.biography,
+                p.profile_picture_stored_name AS "profilePictureStoredName",
                 COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels,
                 COALESCE(json_agg(DISTINCT l.id::text) FILTER (WHERE l.id IS NOT NULL), \'[]\'::json) AS "labelIds"
          FROM partners p
@@ -625,6 +777,7 @@ if ($method === 'GET' && $action === 'admin-profile') {
     $partner = $statement->fetch() ?: null;
     if ($partner) {
         $partner['labelIds'] = json_decode((string) $partner['labelIds'], true) ?: [];
+        attachProfilePictureUrl($partner);
     }
     respond(['user' => $targetUser, 'partner' => $partner]);
 }
@@ -654,7 +807,7 @@ if ($method === 'POST' && $action === 'admin-profile') {
          ON CONFLICT (user_id) DO UPDATE SET slug = EXCLUDED.slug, name = EXCLUDED.name, linkedin_url = EXCLUDED.linkedin_url,
            industry = EXCLUDED.industry, company = EXCLUDED.company, company_url = EXCLUDED.company_url,
            email = EXCLUDED.email, phone = EXCLUDED.phone, biography = EXCLUDED.biography
-         RETURNING id::text, slug'
+         RETURNING id::text, slug, profile_picture_stored_name AS "profilePictureStoredName"'
     );
     $statement->execute([
         'user_id' => $targetUserId,
@@ -674,6 +827,7 @@ if ($method === 'POST' && $action === 'admin-profile') {
     foreach (($body['labelIds'] ?? []) as $labelId) {
         $insertLabel->execute(['partner_id' => (int) $partner['id'], 'label_id' => (int) $labelId]);
     }
+    attachProfilePictureUrl($partner);
     respond(['partner' => $partner]);
 }
 

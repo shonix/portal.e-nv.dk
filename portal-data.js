@@ -20,6 +20,7 @@
     partnerDetail:async function(id,groupId){var key=String(id||"");var params={groupId:groupId||""};if(/^\d+$/.test(key))params.id=key;else params.slug=key;return (await request("partner-detail",null,params)).partner;},
     labels:async function(){return (await request("labels")).labels;},
     myProfile:async function(){return (await request("my-profile")).partner;}, saveMyProfile:function(data){return post("my-profile",data);},
+    uploadProfilePicture:function(file){var data=new FormData();data.append("file",file);return request("profile-picture",{method:"POST",body:data});},
     adminProfile:function(userId){return request("admin-profile",null,{userId:userId});}, saveAdminProfile:function(data){return post("admin-profile",data);},
     adminUsers:function(parameters){return request("admin-users",null,parameters);}, addUser:function(data){return post("admin-users",data);},
     updateUser:function(data){return post("admin-update-user",data);}, deleteUser:function(userId){return post("admin-delete-user",{userId:userId});},
