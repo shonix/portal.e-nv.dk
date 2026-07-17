@@ -2,4 +2,4 @@
 body{padding-top:var(--portal-header-height)}
 .site-header,.site-header *{box-sizing:border-box}
 .site-header{position:fixed;top:0;left:0;right:0;min-height:var(--portal-header-height)}
-@media(max-width:700px){:root{--portal-header-height:73px}}
+@media(max-width:700px){:root{--portal-header-height:112px}}

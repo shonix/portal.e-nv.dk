@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Brugere | Administration</title>
-  <link rel="stylesheet" href="portal-header.css?v=20260604-03">
+  <link rel="stylesheet" href="portal-header.css?v=20260717-01">
   <style>
     :root{--navy:#15243a;--green:#163674;--line:#d6dde3;--muted:#5d6b80;--page:#f5f7f9;--surface:#fff;--danger:#a12626}
     *{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--navy);font-family:Arial,Helvetica,sans-serif}
@@ -21,7 +21,7 @@
     .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:8px;background:#fff}table{width:100%;border-collapse:collapse;min-width:760px}
     th,td{padding:12px 14px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{color:var(--muted);font-size:12px;text-transform:uppercase}tr:last-child td{border-bottom:0}
     .meta{color:var(--muted);font-size:13px}.missing{color:var(--danger)}.pager{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-top:12px}.empty{padding:28px;color:var(--muted);text-align:center}
-    @media(max-width:860px){.layout{grid-template-columns:1fr}.filters{grid-template-columns:1fr 1fr}.filters button{width:100%}}@media(max-width:560px){main{padding:28px 16px 48px}.filters{grid-template-columns:1fr}.pager{align-items:stretch;flex-direction:column}.pager .button-row{margin-top:0}}
+    @media(max-width:900px){main{width:100%;max-width:100%;padding:28px 16px 48px!important;overflow-x:hidden}.layout{grid-template-columns:1fr}.layout,.panel,.table-wrap{width:100%;max-width:100%;min-width:0}.panel{padding:16px}.group-picker{grid-template-columns:1fr}.group-picker button{width:100%}.filters{grid-template-columns:1fr}.filters button{width:100%}.pager{align-items:stretch;flex-direction:column}.pager .button-row{margin-top:0}.pager .button-row button{width:100%}}
   </style>
 </head>
 <body>
@@ -55,7 +55,7 @@
   </div>
 </main>
 <script src="portal-data.js?v=20260604-03"></script>
-<script src="portal-header.js?v=20260604-03"></script>
+<script src="portal-header.js?v=20260717-04"></script>
 <script>
 var groups=[], newUserGroupIds=[], page=1, pageSize=10, total=0;
 function groupName(id){var group=groups.find(function(g){return String(g.id)===String(id)});return group?group.name:"Gruppe "+id}

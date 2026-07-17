@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Branchelabels | Administration</title>
-  <link rel="stylesheet" href="portal-header.css?v=20260615-01">
+  <link rel="stylesheet" href="portal-header.css?v=20260717-01">
   <style>
     :root{--navy:#15243a;--green:#163674;--line:#d6dde3;--muted:#5d6b80;--page:#f5f7f9;--danger:#a12626}
     *{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--navy);font-family:Arial,Helvetica,sans-serif}
@@ -24,8 +24,7 @@
     th{color:var(--muted);font-size:12px;text-transform:uppercase}tr:last-child td{border-bottom:0}th:last-child,td:last-child{text-align:right}
     .pager{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-top:12px}.pager .button-row{margin-top:0}
     .empty{padding:28px;color:var(--muted);text-align:center}
-    @media(max-width:860px){.layout{grid-template-columns:1fr}.filters{grid-template-columns:1fr 1fr}}
-    @media(max-width:560px){main{padding:28px 16px 48px}.filters{grid-template-columns:1fr}.pager{align-items:stretch;flex-direction:column}}
+    @media(max-width:900px){main{width:100%;max-width:100%;padding:28px 16px 48px!important;overflow-x:hidden}.layout{grid-template-columns:1fr}.layout,.panel,.table-wrap{width:100%;max-width:100%;min-width:0}.panel{padding:16px}.filters{grid-template-columns:1fr}.filters button{width:100%}.button-row button{width:100%}.pager{align-items:stretch;flex-direction:column}.pager .button-row button{width:100%}}
   </style>
 </head>
 <body>
@@ -71,7 +70,7 @@
 </main>
 <script src="xlsx.full.min.js"></script>
 <script src="portal-data.js?v=20260615-01"></script>
-<script src="portal-header.js?v=20260615-01"></script>
+<script src="portal-header.js?v=20260717-04"></script>
 <script>
 var pendingNames=[],page=1,total=0;
 function extractNames(rows){if(!rows.length)return[];var headers=(rows[0]||[]).map(function(x){return String(x||"").trim().toLowerCase()}),known=["name","label","branche","branch"],index=headers.findIndex(function(x){return known.includes(x)}),start=0;if(index>=0)start=1;else{index=(rows[0]||[]).findIndex(function(x){return String(x||"").trim()!==""});if(index<0)return[]}return rows.slice(start).map(function(row){return String((row||[])[index]||"").trim()}).filter(Boolean)}

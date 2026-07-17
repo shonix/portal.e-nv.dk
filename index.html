@@ -1,3 +1,9 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Partnerportal</title>
 <style>
   .partner-portal {
     --navy: #15243a;
@@ -11,6 +17,7 @@
     padding: 48px 24px 64px;
     background: var(--page);
     color: var(--navy);
+    box-sizing: border-box;
     font-family: Arial, Helvetica, sans-serif;
   }
 
@@ -55,6 +62,10 @@
     display: flex;
     flex-wrap: wrap;
     gap: 14px;
+  }
+
+  .mobile-section-tabs {
+    display: none;
   }
 
   .portal-grid {
@@ -214,16 +225,127 @@
     }
   }
 
-  @media (max-width: 580px) {
+  @media (max-width: 700px) {
+    html,
+    body {
+      width: 100%;
+      max-width: 100%;
+      overflow-x: hidden;
+    }
+
     .partner-portal {
-      padding: 32px 18px 48px;
+      width: 100%;
+      max-width: 100% !important;
+      padding: 28px 16px 48px;
+      overflow: hidden;
+    }
+
+    .portal-intro {
+      margin-bottom: 18px;
     }
 
     .portal-title {
-      font-size: 30px;
+      font-size: 34px !important;
+    }
+
+    .portal-description {
+      font-size: 16px;
+    }
+
+    .mobile-section-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin: 0 0 18px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      width: 100%;
+      max-width: 100%;
+    }
+
+    .mobile-section-tabs button {
+      min-height: 44px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--navy);
+      font: inherit;
+      font-weight: bold;
+    }
+
+    .mobile-section-tabs button.active {
+      background: var(--green);
+      color: #fff;
+    }
+
+    .portal-grid {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+    }
+
+    .portal-panel {
+      display: none;
+    }
+
+    .portal-panel.active-mobile-panel {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+    }
+
+    .portal-heading {
+      margin-bottom: 12px;
+      font-size: 24px !important;
+    }
+
+    .group-list,
+    .meeting-list {
+      gap: 10px;
+    }
+
+    .group-card,
+    .meeting {
+      width: 100%;
+      max-width: 100%;
+      padding: 16px;
+    }
+
+    .group-card h3,
+    .meeting h3,
+    .portal-meta {
+      overflow-wrap: anywhere;
+    }
+
+    .meeting-topline {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .filters {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      width: 100%;
+      max-width: 100%;
+    }
+
+    .filter-button,
+    .filter-select {
+      width: 100%;
+      min-width: 0;
+      white-space: normal;
+    }
+
+    .filter-select {
+      grid-column: 1 / -1;
     }
   }
 </style>
+</head>
+<body>
 
 <div class="partner-portal">
   <header class="portal-intro">
@@ -232,14 +354,19 @@
     <p class="portal-description">Find dine netværksgrupper og hold dig opdateret om kommende møder.</p>
   </header>
 
+  <div class="mobile-section-tabs" aria-label="Vælg indhold">
+    <button class="active" type="button" data-mobile-section="groups">Grupper</button>
+    <button type="button" data-mobile-section="meetings">Møder</button>
+  </div>
+
   <div class="portal-grid">
-    <section class="portal-panel">
+    <section class="portal-panel active-mobile-panel" data-mobile-panel="groups">
       <h2 class="portal-heading">Grupper</h2>
 
       <div class="group-list" id="group-list"></div>
     </section>
 
-    <section class="portal-panel">
+    <section class="portal-panel" data-mobile-panel="meetings">
       <h2 class="portal-heading">Årets møder</h2>
 
       <div class="filters">
@@ -257,10 +384,18 @@
   </div>
 </div>
 
-<script src="portal-data.js?v=20260604-02"></script><script src="portal-header.js?v=20260604-02"></script>
+<script src="portal-data.js?v=20260604-02"></script><script src="portal-header.js?v=20260717-04"></script>
 <script>
   var statusLabels = { upcoming: "Kommende", held: "Afholdt", cancelled: "Aflyst" };
   var selectedMeetingStatus = "all";
+  function setMobileSection(section) {
+    document.querySelectorAll("[data-mobile-section]").forEach(function (button) {
+      button.classList.toggle("active", button.dataset.mobileSection === section);
+    });
+    document.querySelectorAll("[data-mobile-panel]").forEach(function (panel) {
+      panel.classList.toggle("active-mobile-panel", panel.dataset.mobilePanel === section);
+    });
+  }
   function effectiveMeetingStatus(meeting) {
     if (meeting.status === "cancelled") return "cancelled";
     var time = String(meeting.time || "00:00").slice(0, 5);
@@ -331,7 +466,14 @@
     });
   });
   document.getElementById("meeting-group-filter").addEventListener("change", applyMeetingFilters);
+  document.querySelectorAll("[data-mobile-section]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      setMobileSection(button.dataset.mobileSection);
+    });
+  });
 </script>
+</body>
+</html>
 
 
 

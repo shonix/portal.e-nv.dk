@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Partnere | Partnerportal</title>
-  <link rel="stylesheet" href="portal-header.css?v=20260604-03">
+  <link rel="stylesheet" href="portal-header.css?v=20260717-01">
   <style>
     :root {
       --navy: #15243a;
@@ -141,7 +141,7 @@
 
     <section class="profile-grid" id="profile-grid" aria-label="Partnere"></section>
   </main>
-  <script src="portal-data.js?v=20260604-02"></script><script src="portal-header.js?v=20260604-02"></script>
+  <script src="portal-data.js?v=20260604-02"></script><script src="portal-header.js?v=20260717-04"></script>
   <script>
     PortalData.requireSession().then(function () { return PortalData.myGroups(); }).then(async function (groups) {
       var responses = await Promise.all(groups.map(function (group) { return PortalData.groupPartners(group.id); }));

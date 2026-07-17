@@ -16,6 +16,7 @@
     .hint{display:block;margin-top:5px;color:var(--muted);font-size:12px;font-weight:normal}
     button{margin-top:16px;padding:10px 14px;border:0;border-radius:5px;background:var(--green);color:#fff}
     .notice{color:var(--green)}
+    @media(max-width:700px){main{width:100%;max-width:100%;padding:28px 16px 48px!important;overflow-x:hidden}form{width:100%;max-width:100%;min-width:0;padding:16px}.picker{grid-template-columns:1fr}.picker button{width:100%}}
   </style>
 </head>
 <body>
@@ -42,7 +43,7 @@
   </form>
 </main>
 <script src="portal-data.js?v=20260604-02"></script>
-<script src="portal-header.js?v=20260604-02"></script>
+<script src="portal-header.js?v=20260717-04"></script>
 <script>
 var allGroups=[],selectedGroupIds=[];
 function groupName(id){var group=allGroups.find(function(g){return String(g.id)===String(id)});return group?group.name:"Gruppe "+id}
