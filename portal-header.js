@@ -8,6 +8,7 @@
   }
   var style = document.createElement("style");
   style.textContent = [
+    ".site-header,.site-header *{box-sizing:border-box}",
     ".site-header{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:24px;min-height:77px;padding:14px 28px;border-bottom:1px solid #d6dde3;background:#fff;font-family:Arial,Helvetica,sans-serif}",
     ".site-brand{display:flex;align-items:center;gap:10px;color:#15243a;text-decoration:none;font-weight:bold}",
     ".site-logo{display:flex;width:48px;height:48px;align-items:center;justify-content:center;background:#c92b2b;color:#fff;font-size:19px;font-weight:bold;letter-spacing:-1px}",

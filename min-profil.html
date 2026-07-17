@@ -19,6 +19,17 @@
     .picture-row{display:flex;gap:16px;align-items:center;margin:16px 0 4px}
     .profile-preview{display:flex;width:86px;height:86px;flex:0 0 86px;align-items:center;justify-content:center;overflow:hidden;border-radius:50%;background:var(--green);color:#fff;font-size:30px;font-weight:bold}
     .profile-preview img{width:100%;height:100%;object-fit:cover}
+    .cropper{position:fixed;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;padding:20px;background:#07111fcc}
+    .cropper[hidden]{display:none}
+    .cropper-panel{width:min(420px,100%);padding:20px;border-radius:8px;background:#fff;box-shadow:0 18px 60px #0005}
+    .cropper-panel h2{margin:0 0 14px;font-size:22px}
+    .cropper-stage{position:relative;width:min(320px,100%);aspect-ratio:1;margin:auto;overflow:hidden;border-radius:8px;background:#eef2f5;touch-action:none;cursor:grab}
+    .cropper-stage:active{cursor:grabbing}
+    .cropper-stage:before{content:"";position:absolute;inset:0;border:2px solid #fff;border-radius:50%;pointer-events:none;z-index:2}
+    .cropper-stage:after{content:"";position:absolute;inset:0;background:radial-gradient(circle at center,transparent 49%,#0008 50%);pointer-events:none;z-index:1}
+    .cropper-stage canvas{display:block;width:100%;height:100%}
+    .crop-actions{display:flex;justify-content:flex-end;gap:10px}.crop-actions button{margin-top:16px}
+    .secondary{background:#e8edf2;color:var(--navy)}
     .picker{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;margin-top:5px}.picker select{width:100%;padding:10px;border:1px solid var(--line);border-radius:5px;background:#fff}.selected-tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.tag{display:inline-flex;gap:7px;align-items:center;padding:6px 9px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--navy);font-size:13px}.tag button{margin:0;padding:0;border:0;background:transparent;color:#c92b2b}
   </style>
 </head>
@@ -31,7 +42,7 @@
     <form id="form">
       <div class="picture-row">
         <div class="profile-preview" id="profile-preview">?</div>
-        <label>Profilbillede<input name="profilePicture" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"><span class="hint">JPG, PNG eller WebP. Maks. 2 MB.</span></label>
+        <label>Profilbillede<input id="profile-picture-input" name="profilePicture" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"><span class="hint">JPG, PNG eller WebP. Maks. 2 MB.</span></label>
       </div>
       <label>Navn <span class="required">*</span><input name="name" required></label>
       <label>LinkedIn<input name="linkedin" type="url"></label>
@@ -49,6 +60,17 @@
       <p><a id="view-profile" style="display:none">Se min profil</a></p>
     </form>
   </main>
+  <div class="cropper" id="cropper" hidden>
+    <div class="cropper-panel" role="dialog" aria-modal="true" aria-labelledby="cropper-title">
+      <h2 id="cropper-title">Tilpas profilbillede</h2>
+      <div class="cropper-stage" id="cropper-stage"><canvas id="crop-canvas" width="320" height="320"></canvas></div>
+      <label>Zoom<input id="crop-zoom" type="range" min="1" max="3" step="0.01" value="1"></label>
+      <div class="crop-actions">
+        <button type="button" class="secondary" id="crop-cancel">Fortryd</button>
+        <button type="button" id="crop-use">Brug billede</button>
+      </div>
+    </div>
+  </div>
   <script src="portal-data.js?v=20260604-02"></script><script src="portal-header.js?v=20260604-02"></script>
   <script>
     function showLink(partner) {
@@ -58,7 +80,9 @@
         link.style.display = "inline";
       }
     }
-    var availableLabels = [], selectedLabelIds = [];
+    var availableLabels = [], selectedLabelIds = [], croppedProfilePicture = null, cropSourceUrl = null, cropPreviewUrl = null;
+    var cropper = document.getElementById("cropper"), cropStage = document.getElementById("cropper-stage"), cropCanvas = document.getElementById("crop-canvas"), cropZoom = document.getElementById("crop-zoom");
+    var cropContext = cropCanvas.getContext("2d"), cropState = { image:null, x:0, y:0, scale:1, minScale:1, dragging:false, lastX:0, lastY:0 };
     function renderPreview(partner) {
       var preview = document.getElementById("profile-preview");
       if (partner && partner.profileImageUrl) {
@@ -66,6 +90,58 @@
       } else {
         preview.textContent = (form.elements.name.value || "?").charAt(0).toUpperCase();
       }
+    }
+    function clampCrop() {
+      var width = cropState.image.width * cropState.scale;
+      var height = cropState.image.height * cropState.scale;
+      cropState.x = width <= cropCanvas.width ? (cropCanvas.width - width) / 2 : Math.min(0, Math.max(cropCanvas.width - width, cropState.x));
+      cropState.y = height <= cropCanvas.height ? (cropCanvas.height - height) / 2 : Math.min(0, Math.max(cropCanvas.height - height, cropState.y));
+    }
+    function drawCrop() {
+      if (!cropState.image) return;
+      clampCrop();
+      cropContext.fillStyle = "#fff";
+      cropContext.fillRect(0, 0, cropCanvas.width, cropCanvas.height);
+      cropContext.drawImage(cropState.image, cropState.x, cropState.y, cropState.image.width * cropState.scale, cropState.image.height * cropState.scale);
+    }
+    function closeCropper() {
+      cropper.hidden = true;
+      form.elements.profilePicture.value = "";
+      if (cropSourceUrl) URL.revokeObjectURL(cropSourceUrl);
+      cropSourceUrl = null;
+    }
+    function openCropper(file) {
+      if (!/^image\/(jpeg|png|webp)$/.test(file.type)) {
+        notice.textContent = "Brug JPG, PNG eller WebP.";
+        form.elements.profilePicture.value = "";
+        return;
+      }
+      if (cropSourceUrl) URL.revokeObjectURL(cropSourceUrl);
+      cropSourceUrl = URL.createObjectURL(file);
+      var image = new Image();
+      image.onload = function () {
+        cropState.image = image;
+        cropState.minScale = Math.max(cropCanvas.width / image.width, cropCanvas.height / image.height);
+        cropState.scale = cropState.minScale;
+        cropState.x = (cropCanvas.width - image.width * cropState.scale) / 2;
+        cropState.y = (cropCanvas.height - image.height * cropState.scale) / 2;
+        cropZoom.min = cropState.minScale;
+        cropZoom.max = cropState.minScale * 4;
+        cropZoom.step = (cropState.minScale * 3) / 100;
+        cropZoom.value = cropState.scale;
+        cropper.hidden = false;
+        drawCrop();
+      };
+      image.onerror = function () {
+        notice.textContent = "Billedet kunne ikke læses.";
+        closeCropper();
+      };
+      image.src = cropSourceUrl;
+    }
+    function previewCroppedPicture(blob) {
+      if (cropPreviewUrl) URL.revokeObjectURL(cropPreviewUrl);
+      cropPreviewUrl = URL.createObjectURL(blob);
+      document.getElementById("profile-preview").innerHTML = '<img src="' + cropPreviewUrl + '" alt="">';
     }
     function labelName(id) {
       var label = availableLabels.find(function (item) { return String(item.id) === String(id); });
@@ -112,6 +188,58 @@
         renderLabels();
       }
     };
+    document.getElementById("profile-picture-input").onchange = function () {
+      if (this.files[0]) openCropper(this.files[0]);
+    };
+    cropStage.addEventListener("pointerdown", function (event) {
+      cropState.dragging = true;
+      cropState.lastX = event.clientX;
+      cropState.lastY = event.clientY;
+      this.setPointerCapture(event.pointerId);
+    });
+    cropStage.addEventListener("pointermove", function (event) {
+      if (!cropState.dragging) return;
+      var rect = cropStage.getBoundingClientRect();
+      var factor = cropCanvas.width / rect.width;
+      cropState.x += (event.clientX - cropState.lastX) * factor;
+      cropState.y += (event.clientY - cropState.lastY) * factor;
+      cropState.lastX = event.clientX;
+      cropState.lastY = event.clientY;
+      drawCrop();
+    });
+    cropStage.addEventListener("pointerup", function () { cropState.dragging = false; });
+    cropStage.addEventListener("pointercancel", function () { cropState.dragging = false; });
+    cropZoom.oninput = function () {
+      if (!cropState.image) return;
+      var oldScale = cropState.scale;
+      var focusX = (cropCanvas.width / 2 - cropState.x) / oldScale;
+      var focusY = (cropCanvas.height / 2 - cropState.y) / oldScale;
+      cropState.scale = Number(cropZoom.value);
+      cropState.x = cropCanvas.width / 2 - focusX * cropState.scale;
+      cropState.y = cropCanvas.height / 2 - focusY * cropState.scale;
+      drawCrop();
+    };
+    document.getElementById("crop-cancel").onclick = closeCropper;
+    document.getElementById("crop-use").onclick = function () {
+      var output = document.createElement("canvas");
+      var outputSize = 512;
+      output.width = outputSize;
+      output.height = outputSize;
+      var outputContext = output.getContext("2d");
+      var factor = outputSize / cropCanvas.width;
+      outputContext.fillStyle = "#fff";
+      outputContext.fillRect(0, 0, outputSize, outputSize);
+      outputContext.drawImage(cropState.image, cropState.x * factor, cropState.y * factor, cropState.image.width * cropState.scale * factor, cropState.image.height * cropState.scale * factor);
+      output.toBlob(function (blob) {
+        if (!blob) {
+          notice.textContent = "Profilbilledet kunne ikke klargøres.";
+          return;
+        }
+        croppedProfilePicture = new File([blob], "profile-picture.jpg", { type:"image/jpeg" });
+        previewCroppedPicture(croppedProfilePicture);
+        closeCropper();
+      }, "image/jpeg", 0.9);
+    };
     form.onsubmit = async function (event) {
       event.preventDefault();
       try {
@@ -119,8 +247,9 @@
         delete data.profilePicture;
         data.labelIds = selectedLabelIds.slice();
         var result = await PortalData.saveMyProfile(data);
-        if (form.elements.profilePicture.files[0]) {
-          result = await PortalData.uploadProfilePicture(form.elements.profilePicture.files[0]);
+        if (croppedProfilePicture) {
+          result = await PortalData.uploadProfilePicture(croppedProfilePicture);
+          croppedProfilePicture = null;
           form.elements.profilePicture.value = "";
         }
         notice.textContent = "Profilen er gemt.";

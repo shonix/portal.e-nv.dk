@@ -94,6 +94,32 @@ function attachProfilePictureUrls(array &$partners): void
     unset($partner);
 }
 
+function meetingByKey(PDO $pdo, string $meetingKey): ?array
+{
+    $meeting = $pdo->prepare(
+        'SELECT id, id::text AS "idText", slug, title,
+                (SELECT COUNT(*) FROM meeting_groups mg WHERE mg.meeting_id = meetings.id)::int AS "groupCount"
+         FROM meetings
+         WHERE (:numeric_id > 0 AND id = :numeric_id) OR slug = :slug'
+    );
+    $numericId = ctype_digit($meetingKey) ? (int) $meetingKey : 0;
+    $meeting->execute(['numeric_id' => $numericId, 'slug' => $meetingKey]);
+    return $meeting->fetch() ?: null;
+}
+
+function requireMeetingAccess(PDO $pdo, array $meeting, int $userId): void
+{
+    if (($_SESSION['role'] ?? null) === 'admin' || (int) $meeting['groupCount'] === 0) return;
+    $access = $pdo->prepare(
+        'SELECT 1
+         FROM meeting_groups mg
+         JOIN group_members gm ON gm.group_id = mg.group_id
+         WHERE mg.meeting_id = :meeting_id AND gm.user_id = :user_id'
+    );
+    $access->execute(['meeting_id' => (int) $meeting['id'], 'user_id' => $userId]);
+    if (!$access->fetchColumn()) respond(['error' => 'Du har ikke adgang til dette møde.'], 403);
+}
+
 if ($method === 'POST' && $action === 'login') {
     $body = requestBody();
     $statement = $pdo->prepare('SELECT id, email, password_hash, role FROM users WHERE email = :email');
@@ -632,6 +658,57 @@ if ($method === 'GET' && $action === 'meeting-partners') {
     ]);
 }
 
+if ($method === 'GET' && $action === 'meeting-guests') {
+    requireLogin();
+    $meetingKey = trim((string) ($_GET['id'] ?? ''));
+    if ($meetingKey === '') respond(['error' => 'Meeting is required.'], 422);
+    $meeting = meetingByKey($pdo, $meetingKey);
+    if (!$meeting) respond(['error' => 'Mødet findes ikke.'], 404);
+    requireMeetingAccess($pdo, $meeting, $userId);
+    $statement = $pdo->prepare(
+        'SELECT mg.id::text, mg.name, mg.company, mg.email, mg.created_at AS "createdAt",
+                mg.added_by::text AS "addedByUserId",
+                (
+                    SELECT p.name
+                    FROM partners p
+                    JOIN users u ON u.id = mg.added_by
+                    WHERE p.user_id = mg.added_by
+                       OR (p.user_id IS NULL AND LOWER(TRIM(p.email)) = LOWER(TRIM(u.email)))
+                    ORDER BY p.user_id NULLS LAST, p.id
+                    LIMIT 1
+                ) AS "addedByName"
+         FROM meeting_guests mg
+         WHERE mg.meeting_id = :meeting_id
+         ORDER BY mg.created_at DESC, mg.name'
+    );
+    $statement->execute(['meeting_id' => (int) $meeting['id']]);
+    respond(['guests' => $statement->fetchAll()]);
+}
+
+if ($method === 'POST' && $action === 'meeting-guests') {
+    requireLogin();
+    $body = requestBody();
+    required($body, ['meetingId', 'name', 'company', 'email']);
+    $meeting = meetingByKey($pdo, trim((string) $body['meetingId']));
+    if (!$meeting) respond(['error' => 'Mødet findes ikke.'], 404);
+    requireMeetingAccess($pdo, $meeting, $userId);
+    $email = strtolower(trim((string) $body['email']));
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) respond(['error' => 'Gæstens e-mail er ikke gyldig.'], 422);
+    $statement = $pdo->prepare(
+        'INSERT INTO meeting_guests (meeting_id, added_by, name, company, email)
+         VALUES (:meeting_id, :added_by, :name, :company, :email)
+         RETURNING id::text, name, company, email, created_at AS "createdAt"'
+    );
+    $statement->execute([
+        'meeting_id' => (int) $meeting['id'],
+        'added_by' => $userId,
+        'name' => trim((string) $body['name']),
+        'company' => trim((string) $body['company']),
+        'email' => $email,
+    ]);
+    respond(['guest' => $statement->fetch()], 201);
+}
+
 if ($method === 'GET' && $action === 'partner-detail') {
     requireLogin();
     $partnerId = (int) ($_GET['id'] ?? 0);
@@ -835,7 +912,8 @@ if ($method === 'GET' && $action === 'admin-users') {
     requireAdmin();
     $search = trim((string) ($_GET['search'] ?? ''));
     $role = (string) ($_GET['role'] ?? '');
-    $groupId = (int) ($_GET['groupId'] ?? 0);
+    $groupFilter = trim((string) ($_GET['groupId'] ?? ''));
+    $groupId = (int) $groupFilter;
     $requestedUserId = (int) ($_GET['userId'] ?? 0);
     $page = max(1, (int) ($_GET['page'] ?? 1));
     $pageSize = min(500, max(5, (int) ($_GET['pageSize'] ?? 10)));
@@ -853,6 +931,8 @@ if ($method === 'GET' && $action === 'admin-users') {
     if ($groupId > 0) {
         $where[] = 'EXISTS (SELECT 1 FROM group_members gm_filter WHERE gm_filter.user_id = u.id AND gm_filter.group_id = :filter_group_id)';
         $params['filter_group_id'] = $groupId;
+    } elseif ($groupFilter === 'none') {
+        $where[] = 'NOT EXISTS (SELECT 1 FROM group_members gm_filter WHERE gm_filter.user_id = u.id)';
     }
     if ($requestedUserId > 0) {
         $where[] = 'u.id = :requested_user_id';

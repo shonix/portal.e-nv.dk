@@ -54,6 +54,14 @@ CREATE TABLE IF NOT EXISTS group_members (
   PRIMARY KEY (group_id, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS group_bulletins (
+  id BIGSERIAL PRIMARY KEY,
+  group_id BIGINT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  created_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  message TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS meeting_groups (
   meeting_id BIGINT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
   group_id BIGINT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
@@ -72,6 +80,7 @@ ON CONFLICT DO NOTHING;
 CREATE INDEX IF NOT EXISTS partners_user_id_idx ON partners (user_id);
 CREATE INDEX IF NOT EXISTS group_members_user_id_idx ON group_members (user_id);
 CREATE INDEX IF NOT EXISTS group_members_group_id_idx ON group_members (group_id);
+CREATE INDEX IF NOT EXISTS group_bulletins_group_idx ON group_bulletins (group_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS meeting_groups_group_id_idx ON meeting_groups (group_id);
 
 CREATE TABLE IF NOT EXISTS partner_labels (
@@ -135,7 +144,19 @@ CREATE TABLE IF NOT EXISTS meeting_attachments (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS meeting_guests (
+  id BIGSERIAL PRIMARY KEY,
+  meeting_id BIGINT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+  added_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  name TEXT NOT NULL,
+  company TEXT NOT NULL,
+  email TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS meeting_invitation_recipients_user_idx ON meeting_invitation_recipients (user_id);
 CREATE INDEX IF NOT EXISTS meeting_rsvps_user_idx ON meeting_rsvps (user_id);
 CREATE INDEX IF NOT EXISTS meeting_attachments_meeting_idx ON meeting_attachments (meeting_id);
+CREATE INDEX IF NOT EXISTS meeting_guests_meeting_idx ON meeting_guests (meeting_id);
+CREATE INDEX IF NOT EXISTS meeting_guests_added_by_idx ON meeting_guests (added_by);
 CREATE UNIQUE INDEX IF NOT EXISTS partner_labels_name_lower_uidx ON partner_labels (LOWER(TRIM(name)));

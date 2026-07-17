@@ -67,10 +67,6 @@
     min-width: 0;
   }
 
-  .portal-panel:nth-child(2) {
-    position: relative;
-  }
-
   .portal-heading {
     margin: 0 0 16px;
     color: var(--navy);
@@ -145,11 +141,8 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    position: absolute;
-    top: 0;
-    right: 0;
-    margin: 0;
-    justify-content: flex-end;
+    margin: -4px 0 16px;
+    justify-content: flex-start;
   }
 
   .filter-button {
@@ -162,6 +155,17 @@
     font: inherit;
     font-size: 13px;
     transition: background .15s ease, border-color .15s ease, color .15s ease;
+  }
+
+  .filter-select {
+    min-height: 36px;
+    padding: 8px 11px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--navy);
+    font: inherit;
+    font-size: 13px;
   }
 
   .filter-button:hover,
@@ -210,14 +214,6 @@
     }
   }
 
-  @media (max-width: 680px) {
-    .filters {
-      position: static;
-      margin-bottom: 16px;
-      justify-content: flex-start;
-    }
-  }
-
   @media (max-width: 580px) {
     .partner-portal {
       padding: 32px 18px 48px;
@@ -251,6 +247,9 @@
         <button class="filter-button" type="button" data-filter="upcoming">Kommende</button>
         <button class="filter-button" type="button" data-filter="held">Afholdte</button>
         <button class="filter-button" type="button" data-filter="cancelled">Aflyste</button>
+        <select class="filter-select" id="meeting-group-filter" aria-label="Filtrer møder efter gruppe">
+          <option value="">Alle grupper</option>
+        </select>
       </div>
 
       <div class="meeting-list" id="meeting-list"></div>
@@ -261,6 +260,7 @@
 <script src="portal-data.js?v=20260604-02"></script><script src="portal-header.js?v=20260604-02"></script>
 <script>
   var statusLabels = { upcoming: "Kommende", held: "Afholdt", cancelled: "Aflyst" };
+  var selectedMeetingStatus = "all";
   function effectiveMeetingStatus(meeting) {
     if (meeting.status === "cancelled") return "cancelled";
     var time = String(meeting.time || "00:00").slice(0, 5);
@@ -269,46 +269,68 @@
       ? "held"
       : (meeting.status || "upcoming");
   }
+  function meetingStart(meeting) {
+    var time = String(meeting.time || "00:00").slice(0, 5);
+    var startsAt = new Date(String(meeting.date || "") + "T" + time + ":00");
+    return Number.isNaN(startsAt.getTime()) ? 0 : startsAt.getTime();
+  }
+  function sortMeetings(meetings) {
+    return meetings.slice().sort(function (a, b) {
+      var aStatus = effectiveMeetingStatus(a), bStatus = effectiveMeetingStatus(b);
+      var aUpcoming = aStatus === "upcoming", bUpcoming = bStatus === "upcoming";
+      if (aUpcoming !== bUpcoming) return aUpcoming ? -1 : 1;
+      return aUpcoming ? meetingStart(a) - meetingStart(b) : meetingStart(b) - meetingStart(a);
+    });
+  }
+  function applyMeetingFilters() {
+    var groupId = document.getElementById("meeting-group-filter").value;
+    document.querySelectorAll(".partner-portal .meeting").forEach(function (meeting) {
+      var statusMatch = selectedMeetingStatus === "all" || meeting.dataset.status === selectedMeetingStatus;
+      var groupIds = (meeting.dataset.groupIds || "").split(",").filter(Boolean);
+      var groupMatch = !groupId || groupIds.includes(groupId);
+      meeting.style.display = statusMatch && groupMatch ? "block" : "none";
+    });
+  }
   Promise.all([PortalData.groups(), PortalData.session()]).then(async function (results) {
     var groups = results[0], session = results[1], accessible = [];
     if (session.loggedIn) accessible = await PortalData.myGroups();
     var allowed = accessible.map(function (group) { return group.id; });
+    document.getElementById("meeting-group-filter").innerHTML = '<option value="">Alle grupper</option>' + groups.map(function (group) {
+      return '<option value="' + PortalData.escape(group.id) + '">' + PortalData.escape(group.name) + '</option>';
+    }).join("");
     document.getElementById("group-list").innerHTML = groups.map(function(group,index) {
       var tag = allowed.includes(group.id) ? 'a href="gruppe.html?id='+encodeURIComponent(group.id)+'"' : "div";
       return '<'+tag+' class="group-card"><span class="group-avatar">'+(index+1)+'</span><span><h3>'+PortalData.escape(group.name)+'</h3><p class="portal-meta">'+PortalData.escape(group.address||"")+'</p></span></'+(tag.startsWith("a ")?"a":"div")+'>';
     }).join("");
+    applyMeetingFilters();
   });
   PortalData.meetings().then(function (meetings) {
-    document.getElementById("meeting-list").innerHTML = meetings.map(function (meeting) {
+    document.getElementById("meeting-list").innerHTML = sortMeetings(meetings).map(function (meeting) {
     var status = effectiveMeetingStatus(meeting);
     var date = new Date(meeting.date + "T00:00:00").toLocaleDateString("da-DK", { day: "numeric", month: "long", year: "numeric" });
-      return '<a class="meeting" data-status="' + PortalData.escape(status) + '" href="moede.html?id=' + encodeURIComponent(meeting.slug) + '" style="display:block;color:inherit;text-decoration:none">' +
+      var groupIds = (meeting.groupIds || []).map(String).join(",");
+      return '<a class="meeting" data-status="' + PortalData.escape(status) + '" data-group-ids="' + PortalData.escape(groupIds) + '" href="moede.html?id=' + encodeURIComponent(meeting.slug) + '" style="display:block;color:inherit;text-decoration:none">' +
         '<div class="meeting-topline"><h3>' + PortalData.escape(meeting.title) + '</h3><span class="status ' + PortalData.escape(status) + '">' + PortalData.escape(statusLabels[status] || status) + '</span></div>' +
-        '<p class="portal-meta">' + date + ' &middot; kl. ' + PortalData.escape(meeting.time) + '</p><p class="portal-meta">' + PortalData.escape(meeting.address) + '</p></a>';
+        '<p class="portal-meta">' + date + ' &middot; kl. ' + PortalData.escape(meeting.time) + '</p>' +
+        (meeting.groupNames ? '<p class="portal-meta">' + PortalData.escape(meeting.groupNames) + '</p>' : '') +
+        '<p class="portal-meta">' + PortalData.escape(meeting.address) + '</p></a>';
     }).join("");
+    applyMeetingFilters();
   }).catch(function () {
     document.getElementById("meeting-list").innerHTML = '<p class="portal-meta">Møder kunne ikke hentes fra databasen.</p>';
   });
 
   document.querySelectorAll(".partner-portal .filter-button").forEach(function (button) {
     button.addEventListener("click", function () {
-      var portal = button.closest(".partner-portal");
-      var selected = button.dataset.filter;
-
-      portal.querySelectorAll(".filter-button").forEach(function (item) {
+      selectedMeetingStatus = button.dataset.filter;
+      document.querySelectorAll(".partner-portal .filter-button").forEach(function (item) {
         item.classList.remove("active");
       });
-
       button.classList.add("active");
-
-      portal.querySelectorAll(".meeting").forEach(function (meeting) {
-        meeting.style.display =
-          selected === "all" || meeting.dataset.status === selected
-            ? "block"
-            : "none";
-      });
+      applyMeetingFilters();
     });
   });
+  document.getElementById("meeting-group-filter").addEventListener("change", applyMeetingFilters);
 </script>
 
 

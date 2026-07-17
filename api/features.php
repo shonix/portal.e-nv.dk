@@ -46,6 +46,14 @@ function canAccessMeeting(PDO $pdo, int $meetingId, int $userId): bool
     return (bool) $access->fetchColumn();
 }
 
+function canAccessGroup(PDO $pdo, int $groupId, int $userId): bool
+{
+    if (($_SESSION['role'] ?? null) === 'admin') return true;
+    $access = $pdo->prepare('SELECT 1 FROM group_members WHERE group_id = :group_id AND user_id = :user_id');
+    $access->execute(['group_id' => $groupId, 'user_id' => $userId]);
+    return (bool) $access->fetchColumn();
+}
+
 if ($method === 'GET' && $action === 'admin-group-detail') {
     requireAdmin();
     $groupId = (int) ($_GET['groupId'] ?? 0);
@@ -67,6 +75,59 @@ if ($method === 'GET' && $action === 'admin-group-detail') {
     );
     $members->execute(['group_id' => $groupId]);
     respond(['group' => $group->fetch() ?: null, 'members' => $members->fetchAll()]);
+}
+
+if ($method === 'GET' && $action === 'group-bulletins') {
+    requireLogin();
+    $groupId = (int) ($_GET['groupId'] ?? 0);
+    if ($groupId <= 0) respond(['error' => 'Group is required.'], 422);
+    if (!canAccessGroup($pdo, $groupId, $userId)) respond(['error' => 'Du har ikke adgang til denne gruppe.'], 403);
+    $statement = $pdo->prepare(
+        'SELECT gb.id::text, gb.message, gb.created_at AS "createdAt",
+                u.email AS "createdByEmail",
+                (
+                    SELECT p.name
+                    FROM partners p
+                    WHERE p.user_id = u.id
+                       OR (p.user_id IS NULL AND LOWER(TRIM(p.email)) = LOWER(TRIM(u.email)))
+                    ORDER BY p.user_id NULLS LAST, p.id
+                    LIMIT 1
+                ) AS "createdByName"
+         FROM group_bulletins gb
+         LEFT JOIN users u ON u.id = gb.created_by
+         WHERE gb.group_id = :group_id
+         ORDER BY gb.created_at DESC, gb.id DESC'
+    );
+    $statement->execute(['group_id' => $groupId]);
+    respond(['bulletins' => $statement->fetchAll()]);
+}
+
+if ($method === 'POST' && $action === 'admin-group-bulletins') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['groupId', 'message']);
+    $message = trim((string) $body['message']);
+    if (strlen($message) > 4000) respond(['error' => 'Beskeden er for lang.'], 422);
+    $statement = $pdo->prepare(
+        'INSERT INTO group_bulletins (group_id, created_by, message)
+         VALUES (:group_id, :created_by, :message)
+         RETURNING id::text, message, created_at AS "createdAt"'
+    );
+    $statement->execute([
+        'group_id' => (int) $body['groupId'],
+        'created_by' => $userId,
+        'message' => $message,
+    ]);
+    respond(['bulletin' => $statement->fetch()], 201);
+}
+
+if ($method === 'POST' && $action === 'admin-delete-group-bulletin') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['bulletinId']);
+    $statement = $pdo->prepare('DELETE FROM group_bulletins WHERE id = :id');
+    $statement->execute(['id' => (int) $body['bulletinId']]);
+    respond(['ok' => true]);
 }
 
 if ($method === 'POST' && $action === 'admin-group-member') {
