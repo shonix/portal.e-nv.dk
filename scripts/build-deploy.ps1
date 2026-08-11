@@ -124,8 +124,8 @@ foreach ($entry in $entries) {
     Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
 }
 
-# Verify the artifact is complete and report its final size.
-$builtFiles = @(Get-ChildItem -LiteralPath $outputPath -Recurse -File)
+# Verify the artifact is complete, including Unix dotfiles such as .htaccess.
+$builtFiles = @(Get-ChildItem -LiteralPath $outputPath -Recurse -File -Force)
 if ($builtFiles.Count -ne $entries.Count) {
     throw "Artifact contains $($builtFiles.Count) files; expected $($entries.Count)."
 }
