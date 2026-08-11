@@ -25,6 +25,8 @@ also depends on the hosting and domain mail configuration.
 ```text
 api/                         PHP API and configuration template
 database/                    Full schema, incremental migrations and admin tool
+deployment/                  Explicit public deployment manifest
+scripts/                     Local and CI maintenance scripts
 *.html                       Portal pages
 portal-data.js               Shared API client
 portal-header.js             Shared portal header
@@ -193,22 +195,72 @@ GET https://portal.e-nv.dk/api/index.php?action=session
 The session endpoint should return JSON and must not expose configuration or
 database errors.
 
+## Deployment artifact
+
+Build the exact set of public files before uploading or deploying:
+
+```powershell
+pwsh -NoProfile -File scripts/build-deploy.ps1
+```
+
+The command recreates `dist/portal/` from `deployment/portal-files.txt`. The
+builder rejects missing or duplicate entries, unsafe paths, private files and
+new conventional public files that have not been added to the manifest.
+
+`dist/portal/` is ignored by Git. It is the only local directory whose contents
+should be uploaded to Simply.com's public `portal/` directory. Files such as
+`README.md`, `database/` and `api/config.example.php` cannot enter the artifact
+unless the safety checks are deliberately changed.
+
 ## Manual deployment
 
-Until GitHub Actions deployment is enabled:
+If GitHub Actions deployment is unavailable:
 
 1. Back up the current `portal/` directory and PostgreSQL database.
 2. Apply any required database migrations.
-3. Upload the public application files to `portal/`.
-4. Do not upload `README.md`, `.gitignore`, `POSTGRES-SETUP.md`, `database/` or
-   `api/config.example.php` to the public portal.
+3. Run `pwsh -NoProfile -File scripts/build-deploy.ps1`.
+4. Upload the contents of `dist/portal/` to `portal/`.
 5. Do not modify `portal-config.php`, `portal-private/` or `public_html/`.
 6. Run the health checks above and test login, an admin page and one upload.
 
-The planned GitHub Actions workflow will package an explicit public-file
-allowlist, deploy through SSH, retain a code backup and roll back if health
-checks fail. Database migrations will remain a deliberate manual step until the
-project has a migration ledger.
+The GitHub Actions workflow packages the same explicit public-file allowlist,
+deploys through SSH, retains a code backup and rolls back if health checks fail.
+Database migrations remain a deliberate manual step until the project has a
+migration ledger.
+
+Simply's reviewed public SSH host keys are pinned in
+`deployment/simply-known-hosts`. If Simply rotates these keys, verify the new
+fingerprints through a trusted channel before updating that file.
+
+## GitHub Actions deployment
+
+Production deployment is defined in `.github/workflows/deploy.yml` and is
+manual-only. Run it from **GitHub → Actions → Deploy portal to Simply.com → Run
+workflow** after required database migrations have been applied.
+
+The private repository must contain this Actions secret:
+
+| Secret | Purpose |
+| --- | --- |
+| `SIMPLY_SSH_PRIVATE_KEY` | Dedicated private SSH key whose public half is registered in Simply.com's SSH access panel. |
+
+The workflow performs these operations in order:
+
+1. Check PHP and frontend syntax using PHP 8.4 and Node.js.
+2. Build the explicit `dist/portal/` artifact.
+3. Verify the private key fingerprint and pinned Simply host keys.
+4. Confirm the four protected server paths and required remote tools.
+5. Archive the current public `portal/` code outside the web root.
+6. Upload and count a staged release.
+7. Synchronize only that staged release into `portal/`.
+8. Check the public front page and unauthenticated session API.
+9. Restore the archive automatically if a step after backup fails.
+
+The workflow does not run database migrations and does not write to
+`portal-config.php`, `portal-private/` or `public_html/`. Deployments are
+serialized so two production runs cannot overlap. Automatic deployment from
+`main` remains disabled until the manual deployment and rollback paths have
+both been tested successfully.
 
 ## Security notes
 

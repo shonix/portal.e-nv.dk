@@ -1,0 +1,259 @@
+name: Deploy portal to Simply.com
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portal-production
+  cancel-in-progress: false
+
+env:
+  SSH_HOST: ssh.simply.com
+  SSH_PORT: "22"
+  SSH_USER: e-nv.dk
+  DEPLOY_PATH: /var/www/e-nv.dk/portal
+  DEPLOY_STATE_PATH: /var/www/e-nv.dk/.portal-deploy
+  HEALTH_URL: https://portal.e-nv.dk/
+  SESSION_HEALTH_URL: https://portal.e-nv.dk/api/index.php?action=session
+  EXPECTED_DEPLOY_KEY_FINGERPRINT: SHA256:Bq8rL6n6Hro2ebNluNIjqUSpEpaomcOTleynUZkmHoA
+
+jobs:
+  deploy:
+    name: Verify, back up and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: https://portal.e-nv.dk/
+
+    steps:
+      - name: Check out repository
+        # actions/checkout v4.3.0
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP 8.4
+        # shivammathur/setup-php 2.37.2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240
+        with:
+          php-version: "8.4"
+          coverage: none
+          tools: none
+        env:
+          fail-fast: true
+
+      - name: Check PHP syntax
+        run: |
+          set -euo pipefail
+          find api database -type f -name '*.php' -print0 |
+            xargs -0 -r -n 1 php -l
+
+      - name: Check frontend syntax
+        run: node scripts/check-frontend.js
+
+      - name: Build public deployment artifact
+        shell: pwsh
+        run: ./scripts/build-deploy.ps1
+
+      - name: Configure strict SSH authentication
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SIMPLY_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$SSH_PRIVATE_KEY" ]]; then
+            echo "SIMPLY_SSH_PRIVATE_KEY is not configured." >&2
+            exit 1
+          fi
+
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > "$HOME/.ssh/portal_deploy_key"
+          chmod 600 "$HOME/.ssh/portal_deploy_key"
+          install -m 644 deployment/simply-known-hosts "$HOME/.ssh/known_hosts"
+
+          actual_fingerprint="$({
+            ssh-keygen -y -f "$HOME/.ssh/portal_deploy_key" |
+              ssh-keygen -E sha256 -lf -
+          } | awk '{print $2}')"
+          if [[ "$actual_fingerprint" != "$EXPECTED_DEPLOY_KEY_FINGERPRINT" ]]; then
+            echo "The configured deployment key has an unexpected fingerprint." >&2
+            exit 1
+          fi
+
+      - name: Verify remote prerequisites
+        run: |
+          set -euo pipefail
+          ssh_args=(
+            -p "$SSH_PORT"
+            -i "$HOME/.ssh/portal_deploy_key"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o ConnectTimeout=15
+          )
+          ssh "${ssh_args[@]}" "$SSH_USER@$SSH_HOST" \
+            "set -eu
+             test -d '$DEPLOY_PATH'
+             test -f '/var/www/e-nv.dk/portal-config.php'
+             test -d '/var/www/e-nv.dk/portal-private'
+             test -d '/var/www/e-nv.dk/public_html'
+             command -v rsync >/dev/null
+             command -v tar >/dev/null"
+
+      - name: Back up current production code
+        id: backup
+        run: |
+          set -euo pipefail
+          ssh_args=(
+            -p "$SSH_PORT"
+            -i "$HOME/.ssh/portal_deploy_key"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+          )
+          short_sha="${GITHUB_SHA:0:12}"
+          backup_file="$DEPLOY_STATE_PATH/backups/portal-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${short_sha}.tar.gz"
+          portal_parent="$(dirname "$DEPLOY_PATH")"
+          portal_name="$(basename "$DEPLOY_PATH")"
+
+          ssh "${ssh_args[@]}" "$SSH_USER@$SSH_HOST" \
+            "set -eu
+             mkdir -p '$DEPLOY_STATE_PATH/backups'
+             tar -C '$portal_parent' -czf '$backup_file' '$portal_name'
+             test -s '$backup_file'"
+
+          echo "backup_file=$backup_file" >> "$GITHUB_OUTPUT"
+
+      - name: Upload staged release
+        id: upload
+        run: |
+          set -euo pipefail
+          ssh_args=(
+            -p "$SSH_PORT"
+            -i "$HOME/.ssh/portal_deploy_key"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+          )
+          short_sha="${GITHUB_SHA:0:12}"
+          release_path="$DEPLOY_STATE_PATH/releases/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${short_sha}"
+
+          ssh "${ssh_args[@]}" "$SSH_USER@$SSH_HOST" \
+            "set -eu
+             mkdir -p '$DEPLOY_STATE_PATH/releases'
+             test ! -e '$release_path'
+             mkdir '$release_path'"
+
+          rsync_ssh="ssh -p $SSH_PORT -i $HOME/.ssh/portal_deploy_key -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+          rsync -az --delete -e "$rsync_ssh" \
+            dist/portal/ "$SSH_USER@$SSH_HOST:$release_path/"
+
+          local_count="$(find dist/portal -type f | wc -l | tr -d '[:space:]')"
+          remote_count="$(
+            ssh "${ssh_args[@]}" "$SSH_USER@$SSH_HOST" \
+              "find '$release_path' -type f | wc -l" |
+              tr -d '[:space:]'
+          )"
+          if [[ "$remote_count" != "$local_count" ]]; then
+            echo "Staged release contains $remote_count files; expected $local_count." >&2
+            exit 1
+          fi
+
+          echo "release_path=$release_path" >> "$GITHUB_OUTPUT"
+
+      - name: Activate staged release
+        id: activate
+        env:
+          RELEASE_PATH: ${{ steps.upload.outputs.release_path }}
+        run: |
+          set -euo pipefail
+          ssh_args=(
+            -p "$SSH_PORT"
+            -i "$HOME/.ssh/portal_deploy_key"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+          )
+          ssh "${ssh_args[@]}" "$SSH_USER@$SSH_HOST" \
+            "set -eu
+             test -d '$RELEASE_PATH'
+             rsync -a --delete-delay --delay-updates '$RELEASE_PATH/' '$DEPLOY_PATH/'"
+
+      - name: Check production health
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 --retry-delay 3 \
+            "$HEALTH_URL" >/dev/null
+          session_json="$(
+            curl --fail --silent --show-error --retry 3 --retry-delay 3 \
+              "$SESSION_HEALTH_URL"
+          )"
+          SESSION_JSON="$session_json" node -e '
+            const data = JSON.parse(process.env.SESSION_JSON);
+            if (data.loggedIn !== false || !("role" in data)) process.exit(1);
+          '
+
+      - name: Restore production backup after failure
+        if: ${{ failure() && steps.backup.outcome == 'success' }}
+        env:
+          BACKUP_FILE: ${{ steps.backup.outputs.backup_file }}
+        run: |
+          set -euo pipefail
+          ssh_args=(
+            -p "$SSH_PORT"
+            -i "$HOME/.ssh/portal_deploy_key"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+          )
+          restore_path="$DEPLOY_STATE_PATH/restores/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          ssh "${ssh_args[@]}" "$SSH_USER@$SSH_HOST" \
+            "set -eu
+             test -s '$BACKUP_FILE'
+             mkdir -p '$DEPLOY_STATE_PATH/restores'
+             test ! -e '$restore_path'
+             mkdir '$restore_path'
+             tar -xzf '$BACKUP_FILE' -C '$restore_path'
+             test -d '$restore_path/portal'
+             rsync -a --delete-delay --delay-updates '$restore_path/portal/' '$DEPLOY_PATH/'
+             rm -rf -- '$restore_path'"
+
+          curl --fail --silent --show-error --retry 3 --retry-delay 3 \
+            "$SESSION_HEALTH_URL" >/dev/null
+
+      - name: Remove staged release
+        if: ${{ always() && steps.upload.outputs.release_path != '' }}
+        continue-on-error: true
+        env:
+          RELEASE_PATH: ${{ steps.upload.outputs.release_path }}
+        run: |
+          set -euo pipefail
+          ssh_args=(
+            -p "$SSH_PORT"
+            -i "$HOME/.ssh/portal_deploy_key"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+          )
+          ssh "${ssh_args[@]}" "$SSH_USER@$SSH_HOST" \
+            "set -eu
+             case '$RELEASE_PATH' in
+               '$DEPLOY_STATE_PATH'/releases/*) rm -rf -- '$RELEASE_PATH' ;;
+               *) echo 'Refusing to remove unexpected release path.' >&2; exit 1 ;;
+             esac"
+
+      - name: Write deployment summary
+        if: ${{ success() }}
+        run: |
+          {
+            echo "### Portal deployment succeeded"
+            echo
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Target: \`$DEPLOY_PATH\`"
+            echo "- Backup: \`${{ steps.backup.outputs.backup_file }}\`"
+            echo "- Health check: $SESSION_HEALTH_URL"
+          } >> "$GITHUB_STEP_SUMMARY"
+
