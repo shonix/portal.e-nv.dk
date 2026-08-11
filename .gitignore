@@ -1,0 +1,56 @@
+# Production configuration and local secrets
+portal-config.php
+**/portal-config.php
+.env
+.env.*
+!.env.example
+api/config.php
+*.local.php
+.ssh/
+secrets/
+credentials/
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Runtime data (must remain on the server between deployments)
+portal-private/
+**/portal-private/
+uploads/
+
+# Database dumps and backups (SQL migrations remain tracked)
+*.dump
+*.backup
+*.sql.gz
+*.sql.bz2
+*.sql.zip
+
+# Dependencies, build output and deployment artifacts
+node_modules/
+vendor/
+dist/
+build/
+.deploy/
+deploy-*.tar.gz
+
+# Logs, caches and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+.phpunit.result.cache
+coverage/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
