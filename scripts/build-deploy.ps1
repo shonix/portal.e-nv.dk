@@ -124,11 +124,19 @@ foreach ($entry in $entries) {
     Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
 }
 
-# Verify the artifact is complete, including Unix dotfiles such as .htaccess.
-$builtFiles = @(Get-ChildItem -LiteralPath $outputPath -Recurse -File -Force)
-if ($builtFiles.Count -ne $entries.Count) {
-    throw "Artifact contains $($builtFiles.Count) files; expected $($entries.Count)."
+# Verify each approved path directly so Unix dotfiles are never filtered out.
+$missingEntries = @(
+    $entries | Where-Object {
+        ![System.IO.File]::Exists((Join-Path $outputPath $_))
+    }
+)
+if ($missingEntries.Count -gt 0) {
+    throw "Artifact is missing approved files: $($missingEntries -join ', ')"
 }
 
-$totalBytes = ($builtFiles | Measure-Object -Property Length -Sum).Sum
-Write-Output "Built $($builtFiles.Count) files ($totalBytes bytes) in $outputPath"
+# The output directory was recreated above, and only approved paths are copied.
+# Calculate size from those exact paths rather than platform-specific listings.
+$totalBytes = ($entries | ForEach-Object {
+    [System.IO.FileInfo]::new((Join-Path $outputPath $_)).Length
+} | Measure-Object -Sum).Sum
+Write-Output "Built $($entries.Count) files ($totalBytes bytes) in $outputPath"
