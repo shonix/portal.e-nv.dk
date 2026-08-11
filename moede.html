@@ -24,9 +24,9 @@
     p { margin:0; color:var(--muted); line-height:1.5; }
     .multiline { white-space:pre-line; }
     .collapsible-module { margin-top:18px; overflow:hidden; border:1px solid var(--line); border-radius:8px; background:var(--surface); }
-    .collapsible-module summary { display:flex; justify-content:space-between; gap:16px; align-items:center; min-height:58px; padding:14px 18px; cursor:pointer; list-style:none; }
-    .collapsible-module summary::-webkit-details-marker { display:none; }
-    .collapsible-module summary strong { color:var(--navy); font-size:16px; }
+    .collapsible-module > summary { display:flex; justify-content:space-between; gap:16px; align-items:center; min-height:58px; padding:14px 18px; cursor:pointer; list-style:none; }
+    .collapsible-module > summary::-webkit-details-marker { display:none; }
+    .collapsible-module > summary strong { color:var(--navy); font-size:16px; }
     .module-summary { display:flex; align-items:center; gap:10px; }
     .module-summary::before { content:"+"; width:24px; color:var(--green); font-size:22px; line-height:1; text-align:center; }
     .collapsible-module[open] .module-summary::before { content:"−"; }
@@ -55,7 +55,13 @@
     .attendance-notice { min-height:20px; margin:0 0 8px; color:var(--muted); font-size:13px; }
     .guest-form { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; align-items:end; margin-top:12px; }
     .guest-form label:first-child { grid-column:1 / -1; }
-    .guest-import { margin-top:18px; padding-top:18px; border-top:1px solid var(--line); }
+    .guest-import { margin-top:18px; border-top:1px solid var(--line); }
+    .guest-import > summary { display:flex; align-items:center; gap:8px; min-height:46px; padding:10px 0; color:var(--green); font-size:14px; font-weight:bold; cursor:pointer; list-style:none; }
+    .guest-import > summary::-webkit-details-marker { display:none; }
+    .guest-import-summary { display:inline-flex; align-items:center; gap:8px; }
+    .guest-import-summary::before { content:"+"; width:18px; font-size:18px; line-height:1; text-align:center; }
+    .guest-import[open] .guest-import-summary::before { content:"−"; }
+    .guest-import-body { padding:4px 0 2px; }
     .guest-import-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:10px; }
     .guest-preview { max-height:190px; margin-top:12px; overflow:auto; border:1px solid var(--line); border-radius:8px; background:#fff; }
     .guest-preview div { padding:9px 12px; border-bottom:1px solid var(--line); color:var(--muted); font-size:13px; }
@@ -79,7 +85,7 @@
     .pager-buttons { display:flex; gap:8px; }
     .secondary { border-color:var(--line); background:#fff; color:var(--navy); }
     .empty { padding:20px; color:var(--muted); text-align:center; }
-    @media(max-width:680px){main{padding:28px 16px 48px}.partner-filters,.partner-row,.guest-form,.attendance-toolbar{grid-template-columns:1fr}.pager{align-items:stretch;flex-direction:column}.file-item{align-items:flex-start;flex-direction:column}.guest-import-actions button{width:100%}.collapsible-module summary{padding:14px}.module-body{padding:16px 14px 18px}.attendance-body{padding-top:0}.attendance-filters{grid-template-columns:repeat(3,minmax(0,1fr))}.attendance-filters button{padding:8px 5px}.attendance-row{min-height:66px;padding:11px 10px}}
+    @media(max-width:680px){main{padding:28px 16px 48px}.partner-filters,.partner-row,.guest-form,.attendance-toolbar{grid-template-columns:1fr}.pager{align-items:stretch;flex-direction:column}.file-item{align-items:flex-start;flex-direction:column}.guest-import-actions button{width:100%}.collapsible-module>summary{padding:14px}.module-body{padding:16px 14px 18px}.attendance-body{padding-top:0}.attendance-filters{grid-template-columns:repeat(3,minmax(0,1fr))}.attendance-filters button{padding:8px 5px}.attendance-row{min-height:66px;padding:11px 10px}}
   </style>
 </head>
 <body>
@@ -127,16 +133,18 @@
           <label>E-mail<input name="email" type="email" required></label>
           <button>Tilføj gæst</button>
         </form>
-        <div class="guest-import">
-          <h2>Importér gæster</h2>
-          <p>Upload CSV eller Excel med kolonnerne navn, firmanavn og email.</p>
-          <label>Fil<input id="guest-file" type="file" accept=".csv,.xlsx,.xls"></label>
-          <div class="guest-import-actions">
-            <button type="button" class="secondary" id="guest-read">Læs fil</button>
-            <button type="button" id="guest-import" disabled>Importér gæster</button>
+        <details class="guest-import" id="guest-import-module" hidden>
+          <summary><span class="guest-import-summary">Importér fra CSV eller Excel</span></summary>
+          <div class="guest-import-body">
+            <p>Filen skal have kolonnerne navn, firmanavn og email.</p>
+            <label>Fil<input id="guest-file" type="file" accept=".csv,.xlsx,.xls"></label>
+            <div class="guest-import-actions">
+              <button type="button" class="secondary" id="guest-read">Læs fil</button>
+              <button type="button" id="guest-import" disabled>Importér gæster</button>
+            </div>
+            <div class="guest-preview" id="guest-preview" hidden></div>
           </div>
-          <div class="guest-preview" id="guest-preview" hidden></div>
-        </div>
+        </details>
         <p class="portal-meta" id="guest-notice"></p>
         <div class="guest-list" id="guest-list"></div>
       </div>
@@ -281,13 +289,19 @@
     }
     async function loadGuests() {
       try {
-        document.getElementById("guest-module").hidden = false;
         renderGuests(await PortalData.meetingGuests(currentMeeting.id || currentMeeting.slug));
       } catch (error) {
-        document.getElementById("guest-module").hidden = false;
-        document.getElementById("guest-form").style.display = "none";
-        document.getElementById("guest-list").innerHTML = '<p class="portal-meta">Log ind for at tilføje eller se gæster.</p>';
+        document.getElementById("guest-list").innerHTML = '<p class="portal-meta">Gæsterne kunne ikke hentes.</p>';
       }
+    }
+    async function configureGuests() {
+      try {
+        var session = await PortalData.session();
+        if (!session.loggedIn) return;
+        document.getElementById("guest-module").hidden = false;
+        document.getElementById("guest-import-module").hidden = session.role !== "admin";
+        loadGuests();
+      } catch (error) {}
     }
     function attendanceMatches(row) {
       var search = document.getElementById("attendance-search").value.trim().toLowerCase();
@@ -361,7 +375,7 @@
         return '<div class="row">' + icons[key] + '<div><h2>' + labels[key] + '</h2><p class="multiline">' + PortalData.escape(meeting[key] || "Ikke tilf\u00f8jet endnu") + '</p></div></div>';
       }).join("");
       loadFiles();
-      loadGuests();
+      configureGuests();
       loadPartners();
       configureAttendance();
     }).catch(function () {
