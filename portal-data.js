@@ -22,6 +22,7 @@
     groupPartners:async function(groupId){return request("group-partners",null,{groupId:groupId});},
     meetingPartners:function(parameters){return request("meeting-partners",null,parameters);},
     meetingGuests:async function(meetingId){return (await request("meeting-guests",null,{id:meetingId})).guests;}, addMeetingGuest:function(data){return post("meeting-guests",data);},
+    importMeetingGuests:function(data){return post("admin-import-meeting-guests",data);},
     meetings:async function(){return (await request("meetings")).meetings;}, partners:async function(){return (await request("partners")).partners;},
     partnerDetail:async function(id,groupId){var key=String(id||"");var params={groupId:groupId||""};if(/^\d+$/.test(key))params.id=key;else params.slug=key;return (await request("partner-detail",null,params)).partner;},
     labels:async function(){return (await request("labels")).labels;},

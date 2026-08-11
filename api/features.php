@@ -592,6 +592,63 @@ if ($method === 'POST' && $action === 'admin-meeting-attendance') {
     ]);
 }
 
+if ($method === 'POST' && $action === 'admin-import-meeting-guests') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['meetingId']);
+
+    $meetingId = (int) $body['meetingId'];
+    $guests = $body['guests'] ?? null;
+    if ($meetingId <= 0 || !is_array($guests) || count($guests) === 0) {
+        respond(['error' => 'Vælg et møde og mindst én gæst.'], 422);
+    }
+    if (count($guests) > 500) {
+        respond(['error' => 'Der kan højst importeres 500 gæster ad gangen.'], 422);
+    }
+    $meeting = $pdo->prepare('SELECT id FROM meetings WHERE id = :meeting_id');
+    $meeting->execute(['meeting_id' => $meetingId]);
+    if (!$meeting->fetch()) respond(['error' => 'Mødet findes ikke.'], 404);
+
+    $validated = [];
+    foreach ($guests as $index => $guest) {
+        if (!is_array($guest)) {
+            respond(['error' => 'Række ' . ($index + 2) . ' har et ugyldigt format.'], 422);
+        }
+        $name = trim((string) ($guest['name'] ?? ''));
+        $company = trim((string) ($guest['company'] ?? ''));
+        $email = strtolower(trim((string) ($guest['email'] ?? '')));
+        if ($name === '' || $company === '' || $email === '') {
+            respond(['error' => 'Række ' . ($index + 2) . ' mangler navn, firmanavn eller e-mail.'], 422);
+        }
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            respond(['error' => 'Række ' . ($index + 2) . ' har en ugyldig e-mail.'], 422);
+        }
+        $validated[] = ['name' => $name, 'company' => $company, 'email' => $email];
+    }
+
+    $insert = $pdo->prepare(
+        'INSERT INTO meeting_guests (meeting_id, added_by, name, company, email)
+         VALUES (:meeting_id, :added_by, :name, :company, :email)'
+    );
+    $pdo->beginTransaction();
+    try {
+        foreach ($validated as $guest) {
+            $insert->execute([
+                'meeting_id' => $meetingId,
+                'added_by' => $userId,
+                'name' => $guest['name'],
+                'company' => $guest['company'],
+                'email' => $guest['email'],
+            ]);
+        }
+        $pdo->commit();
+    } catch (Throwable $exception) {
+        $pdo->rollBack();
+        throw $exception;
+    }
+    respond(['imported' => count($validated)], 201);
+}
+
 if ($method === 'POST' && $action === 'admin-remove-meeting-guest') {
     requireAdmin();
     $body = requestBody();

@@ -171,7 +171,7 @@
       </div>
     </details>
   </main>
-  <script src="xlsx.full.min.js"></script><script src="portal-data.js?v=20260811-01"></script><script src="portal-header.js?v=20260811-04"></script>
+  <script src="xlsx.full.min.js"></script><script src="portal-data.js?v=20260811-02"></script><script src="portal-header.js?v=20260811-04"></script>
   <script>
     var icons = {
       partners:'<svg class="icon" viewBox="0 0 24 24"><path d="M16 20v-1.5a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4V20"/><circle cx="9" cy="7" r="3"/><path d="M22 20v-1.5a4 4 0 0 0-3-3.85M16 4.15a3 3 0 0 1 0 5.7"/></svg>',
@@ -440,20 +440,18 @@
       var button = this;
       if (!pendingGuests.length) return;
       button.disabled = true;
-      var imported = 0, failed = 0;
-      for (var i = 0; i < pendingGuests.length; i++) {
-        try {
-          await PortalData.addMeetingGuest(Object.assign({ meetingId:currentMeeting.id || currentMeeting.slug }, pendingGuests[i]));
-          imported++;
-        } catch (error) {
-          failed++;
-        }
+      try {
+        var result = await PortalData.importMeetingGuests({ meetingId:currentMeeting.id, guests:pendingGuests });
+        notice.textContent = result.imported + " gæster importeret.";
+        pendingGuests = [];
+        document.getElementById("guest-file").value = "";
+        document.getElementById("guest-preview").hidden = true;
+        loadGuests();
+      } catch (error) {
+        notice.textContent = error.message;
+      } finally {
+        button.disabled = false;
       }
-      notice.textContent = imported + " gæster importeret" + (failed ? ", " + failed + " fejlede." : ".");
-      pendingGuests = [];
-      document.getElementById("guest-file").value = "";
-      document.getElementById("guest-preview").hidden = true;
-      loadGuests();
     };
   </script>
 </body>
