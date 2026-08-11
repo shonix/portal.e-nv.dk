@@ -234,9 +234,14 @@ fingerprints through a trusted channel before updating that file.
 
 ## GitHub Actions deployment
 
-Production deployment is defined in `.github/workflows/deploy.yml` and is
-manual-only. Run it from **GitHub → Actions → Deploy portal to Simply.com → Run
-workflow** after required database migrations have been applied.
+Production deployment is defined in `.github/workflows/deploy.yml`. Publishing a
+stable GitHub Release automatically deploys the commit referenced by that
+release's tag. Draft releases and prereleases do not deploy.
+
+Before publishing a release, apply any required database migrations and ensure
+the release tag points to the intended production commit. For an exceptional or
+repeat deployment, retain the manual option at **GitHub → Actions → Deploy portal
+to Simply.com → Run workflow** and select the intended branch or tag.
 
 The private repository must contain this Actions secret:
 
@@ -258,9 +263,9 @@ The workflow performs these operations in order:
 
 The workflow does not run database migrations and does not write to
 `portal-config.php`, `portal-private/` or `public_html/`. Deployments are
-serialized so two production runs cannot overlap. Automatic deployment from
-`main` remains disabled until the manual deployment and rollback paths have
-both been tested successfully.
+serialized so two production runs cannot overlap. Pushes to `main` do not deploy
+directly; production changes remain tied to an explicit stable release or manual
+workflow run.
 
 ## Security notes
 
