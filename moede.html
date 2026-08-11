@@ -42,10 +42,11 @@
     .attendance-filters button { min-height:40px; border-color:var(--line); background:#fff; color:var(--navy); }
     .attendance-filters button[aria-pressed="true"] { border-color:var(--green); background:var(--green); color:#fff; }
     .attendance-list { overflow:hidden; border:1px solid var(--line); border-radius:8px; }
-    .attendance-row { display:grid; grid-template-columns:24px minmax(0,1fr); gap:12px; align-items:center; min-height:62px; margin:0; padding:10px 12px; border-bottom:1px solid var(--line); color:var(--navy); cursor:pointer; }
+    .attendance-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:center; min-height:62px; padding:10px 12px; border-bottom:1px solid var(--line); color:var(--navy); }
     .attendance-row:last-child { border-bottom:0; }
     .attendance-row.is-attended { background:#eef8f3; }
-    .attendance-row input { width:22px!important; height:22px!important; min-width:22px; margin:0!important; padding:0; accent-color:var(--green); }
+    .attendance-check { display:grid; grid-template-columns:24px minmax(0,1fr); gap:12px; align-items:center; min-width:0; margin:0; color:var(--navy); cursor:pointer; }
+    .attendance-check input { width:22px!important; height:22px!important; min-width:22px; margin:0!important; padding:0; accent-color:var(--green); }
     .attendance-person { min-width:0; }
     .attendance-person strong { display:block; margin-bottom:3px; overflow-wrap:anywhere; }
     .attendance-person small { display:block; color:var(--muted); font-size:13px; font-weight:normal; line-height:1.35; overflow-wrap:anywhere; }
@@ -67,8 +68,10 @@
     .guest-preview div { padding:9px 12px; border-bottom:1px solid var(--line); color:var(--muted); font-size:13px; }
     .guest-preview div:last-child { border-bottom:0; }
     .guest-list { display:grid; gap:10px; margin-top:16px; }
-    .guest-item { padding:12px 0; border-top:1px solid var(--line); }
+    .guest-item { display:flex; justify-content:space-between; gap:14px; align-items:center; padding:12px 0; border-top:1px solid var(--line); }
+    .guest-item-details { min-width:0; overflow-wrap:anywhere; }
     .guest-item strong { color:var(--green); }
+    .remove-button { flex:0 0 auto; min-height:34px; padding:6px 10px; border-color:#b42318; background:#fff; color:#b42318; font-size:13px; }
     .partner-filters { display:grid; grid-template-columns:minmax(180px,1fr) 180px auto; gap:10px; align-items:end; margin-bottom:14px; }
     label { display:block; color:var(--muted); font-size:13px; font-weight:bold; }
     input,select { width:100%; margin-top:5px; padding:10px; border:1px solid var(--line); border-radius:5px; background:#fff; font:inherit; }
@@ -177,7 +180,7 @@
       guests:'<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"/><path d="M5.5 21a6.5 6.5 0 0 1 13 0"/></svg>'
     };
     var labels = { program:"Program", location:"Lokation", guests:"G\u00e6ster" };
-    var id = new URLSearchParams(location.search).get("id"), currentMeeting = null, partnerPage = 1, partnerTotal = 0, partnerPageSize = 8, pendingGuests = [], attendanceRows = [], attendanceFilter = "all";
+    var id = new URLSearchParams(location.search).get("id"), currentMeeting = null, currentSession = null, partnerPage = 1, partnerTotal = 0, partnerPageSize = 8, pendingGuests = [], attendanceRows = [], attendanceFilter = "all";
     function bytes(n){n=Number(n||0);if(n<1024)return n+" B";if(n<1048576)return Math.round(n/1024)+" KB";return(Math.round(n/104857.6)/10)+" MB"}
     function partnerParameters() {
       var data = Object.fromEntries(new FormData(document.getElementById("partner-filters")));
@@ -240,8 +243,12 @@
     }
     function renderGuests(guests) {
       document.getElementById("guest-list").innerHTML = guests.length ? guests.map(function(guest) {
-        return '<div class="guest-item"><strong>'+PortalData.escape(guest.name)+'</strong><br><span class="portal-meta">'+PortalData.escape(guest.company)+' · <a href="mailto:'+PortalData.escape(guest.email)+'">'+PortalData.escape(guest.email)+'</a></span></div>';
+        var remove = currentSession && currentSession.role === "admin" ? '<button type="button" class="remove-button" data-remove-guest="'+PortalData.escape(guest.id)+'">Fjern</button>' : '';
+        return '<div class="guest-item"><div class="guest-item-details"><strong>'+PortalData.escape(guest.name)+'</strong><br><span class="portal-meta">'+PortalData.escape(guest.company)+' · <a href="mailto:'+PortalData.escape(guest.email)+'">'+PortalData.escape(guest.email)+'</a></span></div>'+remove+'</div>';
       }).join("") : '<p class="portal-meta">Der er endnu ingen gæster registreret.</p>';
+      document.querySelectorAll("[data-remove-guest]").forEach(function(button) {
+        button.onclick = function() { removeMeetingGuest(button.dataset.removeGuest, button); };
+      });
     }
     function normalizeHeader(value) {
       return String(value || "").trim().toLowerCase().replace(/æ/g,"ae").replace(/ø/g,"oe").replace(/å/g,"aa").replace(/[^a-z0-9]/g,"");
@@ -298,6 +305,7 @@
       try {
         var session = await PortalData.session();
         if (!session.loggedIn) return;
+        currentSession = session;
         document.getElementById("guest-module").hidden = false;
         document.getElementById("guest-import-module").hidden = session.role !== "admin";
         loadGuests();
@@ -322,7 +330,8 @@
         var details = [row.company,row.email].filter(Boolean).map(PortalData.escape).join(" · ");
         var badges = '<span class="attendance-badge">'+(row.attendeeType === "guest" ? "Gæst" : "Partner")+'</span>';
         if (row.approvalStatus === "pending") badges += '<span class="attendance-badge pending">Afventer</span>';
-        return '<label class="attendance-row'+(row.attended?' is-attended':'')+'"><input type="checkbox" data-attendee-type="'+PortalData.escape(row.attendeeType)+'" data-attendee-id="'+PortalData.escape(row.attendeeId)+'" '+(row.attended?'checked':'')+'><span class="attendance-person"><strong>'+PortalData.escape(row.name)+'</strong><small>'+details+'</small><span class="attendance-badges">'+badges+'</span></span></label>';
+        var remove = row.attendeeType === "guest" ? '<button type="button" class="remove-button" data-remove-attendance-guest="'+PortalData.escape(row.attendeeId)+'">Fjern</button>' : '';
+        return '<div class="attendance-row'+(row.attended?' is-attended':'')+'"><label class="attendance-check"><input type="checkbox" data-attendee-type="'+PortalData.escape(row.attendeeType)+'" data-attendee-id="'+PortalData.escape(row.attendeeId)+'" '+(row.attended?'checked':'')+'><span class="attendance-person"><strong>'+PortalData.escape(row.name)+'</strong><small>'+details+'</small><span class="attendance-badges">'+badges+'</span></span></label>'+remove+'</div>';
       }).join("") : '<div class="empty">Ingen deltagere matcher filteret.</div>';
       document.querySelectorAll("#attendance-list input[type=checkbox]").forEach(function(checkbox) {
         checkbox.onchange = async function() {
@@ -343,6 +352,27 @@
           }
         };
       });
+      document.querySelectorAll("[data-remove-attendance-guest]").forEach(function(button) {
+        button.onclick = function() { removeMeetingGuest(button.dataset.removeAttendanceGuest, button); };
+      });
+    }
+    async function removeMeetingGuest(guestId, button) {
+      var row = attendanceRows.find(function(item) { return item.attendeeType === "guest" && String(item.attendeeId) === String(guestId); });
+      var name = row ? row.name : "denne deltager";
+      if (!window.confirm("Fjern " + name + " fra mødet?")) return;
+      button.disabled = true;
+      var notice = document.getElementById(button.hasAttribute("data-remove-guest") ? "guest-notice" : "attendance-notice");
+      notice.textContent = "Fjerner...";
+      try {
+        await PortalData.removeMeetingGuest({meetingId:currentMeeting.id,guestId:guestId});
+        attendanceRows = attendanceRows.filter(function(item) { return !(item.attendeeType === "guest" && String(item.attendeeId) === String(guestId)); });
+        renderAttendance();
+        loadGuests();
+        notice.textContent = "Gæsten er fjernet fra mødet.";
+      } catch (error) {
+        button.disabled = false;
+        notice.textContent = error.message;
+      }
     }
     async function loadAttendance() {
       var list = document.getElementById("attendance-list");
@@ -359,6 +389,7 @@
       try {
         var session = await PortalData.session();
         if (session.role !== "admin") return;
+        currentSession = session;
         document.getElementById("attendance-module").hidden = false;
         loadAttendance();
       } catch (error) {}

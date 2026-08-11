@@ -505,6 +505,31 @@ if ($method === 'POST' && $action === 'admin-meeting-attendance') {
     ]);
 }
 
+if ($method === 'POST' && $action === 'admin-remove-meeting-guest') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['meetingId', 'guestId']);
+
+    $meetingId = (int) $body['meetingId'];
+    $guestId = (int) $body['guestId'];
+    if ($meetingId <= 0 || $guestId <= 0) {
+        respond(['error' => 'Ugyldig gæst.'], 422);
+    }
+
+    $delete = $pdo->prepare(
+        'DELETE FROM meeting_guests
+         WHERE meeting_id = :meeting_id AND id = :guest_id
+         RETURNING id::text'
+    );
+    $delete->execute(['meeting_id' => $meetingId, 'guest_id' => $guestId]);
+    if (!$delete->fetch()) respond(['error' => 'Gæsten findes ikke på dette møde.'], 404);
+
+    respond([
+        'ok' => true,
+        'guestId' => (string) $guestId,
+    ]);
+}
+
 if ($method === 'GET' && $action === 'admin-meeting-attachments') {
     requireAdmin();
     $meetingId = (int) ($_GET['meetingId'] ?? 0);
