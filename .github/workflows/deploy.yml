@@ -18,6 +18,8 @@ env:
   DEPLOY_STATE_PATH: /var/www/e-nv.dk/.portal-deploy
   HEALTH_URL: https://portal.e-nv.dk/
   SESSION_HEALTH_URL: https://portal.e-nv.dk/api/index.php?action=session
+  # Simply's WAF returns HTTP 455 for generic automated user agents.
+  HEALTH_USER_AGENT: portal.e-nv.dk-deployment-health/1.0
   EXPECTED_DEPLOY_KEY_FINGERPRINT: SHA256:Bq8rL6n6Hro2ebNluNIjqUSpEpaomcOTleynUZkmHoA
 
 jobs:
@@ -186,9 +188,11 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --silent --show-error --retry 3 --retry-delay 3 \
+            --user-agent "$HEALTH_USER_AGENT" \
             "$HEALTH_URL" >/dev/null
           session_json="$(
             curl --fail --silent --show-error --retry 3 --retry-delay 3 \
+              --user-agent "$HEALTH_USER_AGENT" \
               "$SESSION_HEALTH_URL"
           )"
           SESSION_JSON="$session_json" node -e '
@@ -222,6 +226,7 @@ jobs:
              rm -rf -- '$restore_path'"
 
           curl --fail --silent --show-error --retry 3 --retry-delay 3 \
+            --user-agent "$HEALTH_USER_AGENT" \
             "$SESSION_HEALTH_URL" >/dev/null
 
       - name: Remove staged release
@@ -256,4 +261,3 @@ jobs:
             echo "- Backup: \`${{ steps.backup.outputs.backup_file }}\`"
             echo "- Health check: $SESSION_HEALTH_URL"
           } >> "$GITHUB_STEP_SUMMARY"
-
