@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Infobanner | Administration</title>
+  <link rel="stylesheet" href="portal-header.css?v=20260717-01">
+  <style>
+    :root{--navy:#15243a;--blue:#163674;--line:#d6dde3;--muted:#5d6b80;--page:#f5f7f9;--surface:#fff;--notice:#edf4fb;--notice-line:#b9cbe0}*{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--navy);font-family:Arial,Helvetica,sans-serif}main{max-width:850px;margin:auto;padding:40px 24px 64px}a{color:var(--blue);text-underline-offset:3px}h1{margin:10px 0 6px}.intro,.help{color:var(--muted);line-height:1.5}.panel{margin-top:20px;padding:22px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}label{display:block;margin-top:16px;color:var(--muted);font-size:13px;font-weight:bold}input[type="text"],select,textarea{display:block;width:100%;margin-top:6px;padding:11px 12px;border:1px solid var(--line);border-radius:5px;background:#fff;color:var(--navy);font:inherit}textarea{min-height:120px;resize:vertical}.toggle-row{display:flex;align-items:flex-start;gap:11px;margin-top:0;color:var(--navy);font-size:16px;cursor:pointer}.toggle-row input{width:19px;height:19px;margin:2px 0 0;accent-color:var(--blue)}.toggle-row span{display:block}.toggle-row small{display:block;margin-top:4px;color:var(--muted);font-size:13px;font-weight:normal;line-height:1.4}.button-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:20px}button{min-height:42px;padding:9px 16px;border:1px solid var(--blue);border-radius:5px;background:var(--blue);color:#fff;font:inherit;cursor:pointer}button:disabled{cursor:wait;opacity:.65}.status{margin:0;color:var(--blue)}.preview-heading{margin:0 0 12px;font-size:18px}.preview{display:grid;grid-template-columns:24px minmax(0,1fr);gap:12px;padding:14px 16px;border-bottom:1px solid var(--notice-line);background:var(--notice);color:#183a63}.preview-icon{display:flex;width:22px;height:22px;align-items:center;justify-content:center;margin-top:1px;border:2px solid currentColor;border-radius:50%;font-size:14px;font-style:normal;font-weight:bold}.preview strong{display:block;margin-bottom:3px;font-size:15px}.preview p{margin:0;font-size:14px;line-height:1.45;white-space:pre-wrap}.preview-off{margin:0;padding:16px;border:1px dashed var(--line);color:var(--muted);text-align:center}@media(max-width:700px){main{padding:28px 16px 48px}.panel{padding:18px}}
+  </style>
+</head>
+<body>
+  <main>
+    <a href="admin.html">&larr; Administration</a>
+    <h1>Infobanner</h1>
+    <p class="intro">Vis en fælles besked i toppen af partnerportalen. Ændringer træder i kraft med det samme.</p>
+
+    <form class="panel" id="banner-form">
+      <label class="toggle-row">
+        <input type="checkbox" name="enabled">
+        <span>Vis banner<small>Slå banneret fra uden at slette teksten.</small></span>
+      </label>
+
+      <label>Vises for
+        <select name="audience">
+          <option value="all">Alle brugere med login</option>
+          <option value="no_group">Kun brugere uden en gruppe</option>
+        </select>
+      </label>
+
+      <label>Overskrift
+        <input type="text" name="title" maxlength="180" required>
+      </label>
+
+      <label>Besked
+        <textarea name="message" maxlength="1200" required></textarea>
+      </label>
+
+      <div class="button-row">
+        <button type="submit">Gem ændringer</button>
+        <p class="status" id="status" role="status"></p>
+      </div>
+    </form>
+
+    <section class="panel" aria-labelledby="preview-heading">
+      <h2 class="preview-heading" id="preview-heading">Forhåndsvisning</h2>
+      <div class="preview" id="preview">
+        <i class="preview-icon" aria-hidden="true">i</i>
+        <div><strong id="preview-title"></strong><p id="preview-message"></p></div>
+      </div>
+      <p class="preview-off" id="preview-off" hidden>Banneret er skjult.</p>
+    </section>
+  </main>
+
+  <script src="portal-data.js?v=20260811-01"></script>
+  <script src="portal-header.js?v=20260811-04"></script>
+  <script>
+    var form=document.getElementById("banner-form"),statusText=document.getElementById("status"),preview=document.getElementById("preview"),previewOff=document.getElementById("preview-off"),previewTitle=document.getElementById("preview-title"),previewMessage=document.getElementById("preview-message"),saveButton=form.querySelector('button[type="submit"]');
+    function renderPreview(){var enabled=form.elements.enabled.checked;preview.hidden=!enabled;previewOff.hidden=enabled;previewTitle.textContent=form.elements.title.value||"Overskrift";previewMessage.textContent=form.elements.message.value||"Besked"}
+    form.addEventListener("input",renderPreview);
+    PortalData.requireSession("admin").then(function(){return PortalData.adminBannerSettings()}).then(function(settings){form.elements.enabled.checked=settings.enabled;form.elements.audience.value=settings.audience;form.elements.title.value=settings.title;form.elements.message.value=settings.message;renderPreview()}).catch(function(error){statusText.textContent=error.message});
+    form.onsubmit=async function(event){event.preventDefault();statusText.textContent="";saveButton.disabled=true;try{var result=await PortalData.saveBannerSettings({enabled:form.elements.enabled.checked,audience:form.elements.audience.value,title:form.elements.title.value,message:form.elements.message.value});form.elements.enabled.checked=result.banner.enabled;form.elements.audience.value=result.banner.audience;form.elements.title.value=result.banner.title;form.elements.message.value=result.banner.message;renderPreview();statusText.textContent="Banneret er gemt."}catch(error){statusText.textContent=error.message}finally{saveButton.disabled=false}};
+  </script>
+</body>
+</html>

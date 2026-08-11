@@ -54,6 +54,93 @@ function canAccessGroup(PDO $pdo, int $groupId, int $userId): bool
     return (bool) $access->fetchColumn();
 }
 
+function defaultPortalBannerSettings(): array
+{
+    return [
+        'enabled' => true,
+        'audience' => 'no_group',
+        'title' => 'Velkommen til Ejendomsnetværkets Partnerportal',
+        'message' => 'Når du har oprettet din brugerprofil, kan der gå op til 24 timer, før en administrator tilføjer dig til din gruppe.',
+    ];
+}
+
+function portalBannerSettings(PDO $pdo): array
+{
+    $settings = defaultPortalBannerSettings();
+    $statement = $pdo->query(
+        "SELECT setting_key, setting_value
+         FROM portal_settings
+         WHERE setting_key IN ('banner_enabled', 'banner_audience', 'banner_title', 'banner_message')"
+    );
+    $values = [];
+    foreach ($statement->fetchAll() as $row) {
+        $values[(string) $row['setting_key']] = (string) $row['setting_value'];
+    }
+    $settings['enabled'] = ($values['banner_enabled'] ?? 'true') === 'true';
+    $audience = $values['banner_audience'] ?? 'no_group';
+    $settings['audience'] = in_array($audience, ['all', 'no_group'], true) ? $audience : 'no_group';
+    $settings['title'] = $values['banner_title'] ?? $settings['title'];
+    $settings['message'] = $values['banner_message'] ?? $settings['message'];
+    return $settings;
+}
+
+if ($method === 'GET' && $action === 'portal-banner') {
+    requireLogin();
+    respond(['banner' => portalBannerSettings($pdo)]);
+}
+
+if ($method === 'GET' && $action === 'admin-banner-settings') {
+    requireAdmin();
+    respond(['banner' => portalBannerSettings($pdo)]);
+}
+
+if ($method === 'POST' && $action === 'admin-banner-settings') {
+    requireAdmin();
+    $body = requestBody();
+    $enabled = filter_var($body['enabled'] ?? false, FILTER_VALIDATE_BOOL);
+    $audience = (string) ($body['audience'] ?? '');
+    $title = trim((string) ($body['title'] ?? ''));
+    $message = trim((string) ($body['message'] ?? ''));
+    if (!in_array($audience, ['all', 'no_group'], true)) {
+        respond(['error' => 'Vælg hvem banneret skal vises for.'], 422);
+    }
+    if ($title === '' || strlen($title) > 180) {
+        respond(['error' => 'Overskriften skal være mellem 1 og 180 tegn.'], 422);
+    }
+    if ($message === '' || strlen($message) > 1200) {
+        respond(['error' => 'Beskeden skal være mellem 1 og 1200 tegn.'], 422);
+    }
+    $values = [
+        'banner_enabled' => $enabled ? 'true' : 'false',
+        'banner_audience' => $audience,
+        'banner_title' => $title,
+        'banner_message' => $message,
+    ];
+    $statement = $pdo->prepare(
+        'INSERT INTO portal_settings (setting_key, setting_value, updated_at, updated_by)
+         VALUES (:setting_key, :setting_value, NOW(), :updated_by)
+         ON CONFLICT (setting_key) DO UPDATE
+         SET setting_value = EXCLUDED.setting_value,
+             updated_at = NOW(),
+             updated_by = EXCLUDED.updated_by'
+    );
+    $pdo->beginTransaction();
+    try {
+        foreach ($values as $key => $value) {
+            $statement->execute([
+                'setting_key' => $key,
+                'setting_value' => $value,
+                'updated_by' => (int) $_SESSION['user_id'],
+            ]);
+        }
+        $pdo->commit();
+    } catch (Throwable $exception) {
+        $pdo->rollBack();
+        throw $exception;
+    }
+    respond(['banner' => portalBannerSettings($pdo)]);
+}
+
 if ($method === 'GET' && $action === 'admin-group-detail') {
     requireAdmin();
     $groupId = (int) ($_GET['groupId'] ?? 0);

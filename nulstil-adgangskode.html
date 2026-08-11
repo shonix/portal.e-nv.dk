@@ -29,8 +29,8 @@
     <p id="result"></p>
   </section>
 </main>
-<script src="portal-data.js?v=20260731-01"></script>
-<script src="portal-header.js?v=20260717-04"></script>
+<script src="portal-data.js?v=20260811-01"></script>
+<script src="portal-header.js?v=20260811-04"></script>
 <script>
 var token=new URLSearchParams(location.search).get("token")||"",resetForm=document.getElementById("reset-form"),statusText=document.getElementById("status"),resultText=document.getElementById("result");
 async function validateLink(){if(!token){statusText.textContent="Nulstillingslinket mangler.";statusText.className="error";return}try{await PortalData.passwordResetInfo(token);statusText.textContent="Vælg en ny adgangskode på mindst 10 tegn.";resetForm.hidden=false}catch(x){statusText.textContent=x.message;statusText.className="error"}}

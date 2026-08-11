@@ -5,6 +5,7 @@
 api/bootstrap.php
 api/features.php
 api/index.php
+admin-banner.html
 admin-branchelabels.html
 admin-bruger.html
 admin-brugere.html
@@ -35,4 +36,3 @@ portal-header.css
 portal-header.js
 registrer.html
 xlsx.full.min.js
-

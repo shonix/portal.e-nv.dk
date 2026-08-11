@@ -141,7 +141,7 @@
 
     <section class="profile-grid" id="profile-grid" aria-label="Partnere"></section>
   </main>
-  <script src="portal-data.js?v=20260604-02"></script><script src="portal-header.js?v=20260717-04"></script>
+  <script src="portal-data.js?v=20260811-01"></script><script src="portal-header.js?v=20260811-04"></script>
   <script>
     PortalData.requireSession().then(function () { return PortalData.myGroups(); }).then(async function (groups) {
       var responses = await Promise.all(groups.map(function (group) { return PortalData.groupPartners(group.id); }));

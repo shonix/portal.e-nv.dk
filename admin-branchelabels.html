@@ -69,8 +69,8 @@
   </div>
 </main>
 <script src="xlsx.full.min.js"></script>
-<script src="portal-data.js?v=20260615-01"></script>
-<script src="portal-header.js?v=20260717-04"></script>
+<script src="portal-data.js?v=20260811-01"></script>
+<script src="portal-header.js?v=20260811-04"></script>
 <script>
 var pendingNames=[],page=1,total=0;
 function extractNames(rows){if(!rows.length)return[];var headers=(rows[0]||[]).map(function(x){return String(x||"").trim().toLowerCase()}),known=["name","label","branche","branch"],index=headers.findIndex(function(x){return known.includes(x)}),start=0;if(index>=0)start=1;else{index=(rows[0]||[]).findIndex(function(x){return String(x||"").trim()!==""});if(index<0)return[]}return rows.slice(start).map(function(row){return String((row||[])[index]||"").trim()}).filter(Boolean)}
