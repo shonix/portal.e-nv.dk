@@ -67,6 +67,13 @@ function accountInvitationUrl(string $token): string
         . '/registrer.html?token=' . urlencode($token);
 }
 
+function passwordResetUrl(string $token): string
+{
+    global $config;
+    return portalBaseUrl($config)
+        . '/nulstil-adgangskode.html?token=' . urlencode($token);
+}
+
 function profilePictureDirectory(array $config): string
 {
     return (string) ($config['profile_picture_dir'] ?? (dirname(__DIR__, 2) . '/portal-private/profile-pictures'));
@@ -175,6 +182,76 @@ if ($method === 'POST' && $action === 'register') {
     $_SESSION['user_id'] = (int) $user['id'];
     $_SESSION['role'] = $user['role'];
     respond(['ok' => true, 'role' => $user['role']], 201);
+}
+
+if ($method === 'GET' && $action === 'password-reset-info') {
+    $token = trim((string) ($_GET['token'] ?? ''));
+    if ($token === '') respond(['error' => 'Nulstillingslinket mangler.'], 422);
+    $statement = $pdo->prepare(
+        'SELECT 1 FROM password_reset_tokens
+         WHERE token_hash = :token_hash AND used_at IS NULL AND expires_at > NOW()'
+    );
+    $statement->execute(['token_hash' => hash('sha256', $token)]);
+    if (!$statement->fetchColumn()) {
+        respond(['error' => 'Nulstillingslinket er ugyldigt, udløbet eller allerede brugt.'], 422);
+    }
+    respond(['valid' => true]);
+}
+
+if ($method === 'POST' && $action === 'password-reset') {
+    $body = requestBody();
+    required($body, ['token', 'password']);
+    $password = (string) $body['password'];
+    if (strlen($password) < 10) {
+        respond(['error' => 'Adgangskoden skal være mindst 10 tegn.'], 422);
+    }
+    $pdo->beginTransaction();
+    try {
+        $tokenHash = hash('sha256', (string) $body['token']);
+        $lookup = $pdo->prepare(
+            'SELECT user_id FROM password_reset_tokens
+             WHERE token_hash = :token_hash AND used_at IS NULL AND expires_at > NOW()'
+        );
+        $lookup->execute(['token_hash' => $tokenHash]);
+        $reset = $lookup->fetch();
+        if (!$reset) {
+            $pdo->rollBack();
+            respond(['error' => 'Nulstillingslinket er ugyldigt, udløbet eller allerede brugt.'], 422);
+        }
+
+        // Keep the user-to-token lock order consistent with admin password changes.
+        $userStatement = $pdo->prepare('SELECT id FROM users WHERE id = :id FOR UPDATE');
+        $userStatement->execute(['id' => (int) $reset['user_id']]);
+        if (!$userStatement->fetch()) {
+            $pdo->rollBack();
+            respond(['error' => 'Nulstillingslinket er ugyldigt, udløbet eller allerede brugt.'], 422);
+        }
+
+        $statement = $pdo->prepare(
+            'SELECT id, user_id FROM password_reset_tokens
+             WHERE token_hash = :token_hash AND used_at IS NULL AND expires_at > NOW()
+             FOR UPDATE'
+        );
+        $statement->execute(['token_hash' => $tokenHash]);
+        $reset = $statement->fetch();
+        if (!$reset) {
+            $pdo->rollBack();
+            respond(['error' => 'Nulstillingslinket er ugyldigt, udløbet eller allerede brugt.'], 422);
+        }
+        $pdo->prepare('UPDATE users SET password_hash = :password_hash WHERE id = :id')->execute([
+            'password_hash' => password_hash($password, PASSWORD_DEFAULT),
+            'id' => (int) $reset['user_id'],
+        ]);
+        $pdo->prepare(
+            'UPDATE password_reset_tokens SET used_at = NOW()
+             WHERE user_id = :user_id AND used_at IS NULL'
+        )->execute(['user_id' => (int) $reset['user_id']]);
+        $pdo->commit();
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $error;
+    }
+    respond(['ok' => true]);
 }
 
 if ($method === 'GET' && $action === 'admin-invitations') {
@@ -1022,6 +1099,10 @@ if ($method === 'POST' && $action === 'admin-update-user') {
                 'role' => $role,
                 'password_hash' => password_hash($password, PASSWORD_DEFAULT),
             ]);
+            $pdo->prepare(
+                'UPDATE password_reset_tokens SET used_at = NOW()
+                 WHERE user_id = :user_id AND used_at IS NULL'
+            )->execute(['user_id' => $targetUserId]);
         } else {
             $statement = $pdo->prepare('UPDATE users SET email = :email, role = :role WHERE id = :id RETURNING id::text, email, role');
             $statement->execute([
@@ -1051,6 +1132,48 @@ if ($method === 'POST' && $action === 'admin-update-user') {
         throw $error;
     }
     respond(['user' => $userRow]);
+}
+
+if ($method === 'POST' && $action === 'admin-password-reset-link') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['userId']);
+    $targetUserId = (int) $body['userId'];
+    $token = bin2hex(random_bytes(32));
+    $pdo->beginTransaction();
+    try {
+        $userStatement = $pdo->prepare('SELECT id, email FROM users WHERE id = :id FOR UPDATE');
+        $userStatement->execute(['id' => $targetUserId]);
+        $targetUser = $userStatement->fetch();
+        if (!$targetUser) {
+            $pdo->rollBack();
+            respond(['error' => 'Brugeren findes ikke.'], 404);
+        }
+        $pdo->prepare(
+            'UPDATE password_reset_tokens SET used_at = NOW()
+             WHERE user_id = :user_id AND used_at IS NULL'
+        )->execute(['user_id' => $targetUserId]);
+        $statement = $pdo->prepare(
+            "INSERT INTO password_reset_tokens (user_id, token_hash, created_by, expires_at)
+             VALUES (:user_id, :token_hash, :created_by, NOW() + INTERVAL '1 hour')
+             RETURNING (EXTRACT(EPOCH FROM expires_at) * 1000)::bigint::text AS \"expiresAt\""
+        );
+        $statement->execute([
+            'user_id' => $targetUserId,
+            'token_hash' => hash('sha256', $token),
+            'created_by' => $userId,
+        ]);
+        $reset = $statement->fetch();
+        $pdo->commit();
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $error;
+    }
+    respond([
+        'url' => passwordResetUrl($token),
+        'expiresAt' => $reset['expiresAt'],
+        'email' => $targetUser['email'],
+    ], 201);
 }
 
 if ($method === 'POST' && $action === 'admin-user-groups') {

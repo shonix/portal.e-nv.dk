@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Cache-Control" content="no-store">
+  <title>Nulstil adgangskode | Partnerportal</title>
+  <link rel="stylesheet" href="portal-header.css?v=20260717-01">
+  <style>
+    :root{--navy:#15243a;--green:#163674;--line:#d6dde3;--muted:#5d6b80;--page:#f5f7f9;--surface:#fff;--danger:#a12626}
+    *{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--navy);font-family:Arial,Helvetica,sans-serif}
+    main{max-width:460px;margin:8vh auto;padding:24px}.panel{padding:26px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+    h1{margin:0 0 8px;font-size:30px}p{color:var(--muted);line-height:1.5}label{display:block;margin-top:14px;color:var(--muted);font-size:13px;font-weight:bold}
+    input{width:100%;margin-top:5px;padding:11px;border:1px solid var(--line);border-radius:5px;font:inherit}button{width:100%;margin-top:18px;padding:11px;border:0;border-radius:5px;background:var(--green);color:#fff;cursor:pointer;font:inherit;font-weight:bold}
+    button:disabled{cursor:not-allowed;opacity:.65}.error{color:var(--danger)}.success{color:var(--green)}a{color:var(--green);text-underline-offset:3px}@media(max-width:520px){main{margin:24px auto;padding:16px}.panel{padding:20px}}
+  </style>
+</head>
+<body>
+<main>
+  <section class="panel">
+    <h1>Nulstil adgangskode</h1>
+    <p id="status">Kontrollerer nulstillingslinket...</p>
+    <form id="reset-form" hidden>
+      <label>Ny adgangskode<input name="password" type="password" minlength="10" autocomplete="new-password" required></label>
+      <label>Gentag adgangskode<input name="confirmPassword" type="password" minlength="10" autocomplete="new-password" required></label>
+      <button type="submit">Gem ny adgangskode</button>
+    </form>
+    <p id="result"></p>
+  </section>
+</main>
+<script src="portal-data.js?v=20260731-01"></script>
+<script src="portal-header.js?v=20260717-04"></script>
+<script>
+var token=new URLSearchParams(location.search).get("token")||"",resetForm=document.getElementById("reset-form"),statusText=document.getElementById("status"),resultText=document.getElementById("result");
+async function validateLink(){if(!token){statusText.textContent="Nulstillingslinket mangler.";statusText.className="error";return}try{await PortalData.passwordResetInfo(token);statusText.textContent="Vælg en ny adgangskode på mindst 10 tegn.";resetForm.hidden=false}catch(x){statusText.textContent=x.message;statusText.className="error"}}
+resetForm.onsubmit=async function(e){e.preventDefault();resultText.textContent="";resultText.className="";if(resetForm.password.value!==resetForm.confirmPassword.value){resultText.textContent="Adgangskoderne er ikke ens.";resultText.className="error";return}var button=resetForm.querySelector("button");button.disabled=true;try{await PortalData.resetPassword(token,resetForm.password.value);history.replaceState({},document.title,"nulstil-adgangskode.html");resetForm.hidden=true;statusText.textContent="Din adgangskode er blevet ændret.";statusText.className="success";resultText.innerHTML='<a href="login.html">Gå til login</a>'}catch(x){resultText.textContent=x.message;resultText.className="error";button.disabled=false}};
+validateLink();
+</script>
+</body>
+</html>

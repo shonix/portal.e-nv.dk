@@ -19,6 +19,8 @@
     button,.button{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:9px 13px;border:1px solid var(--line);border-radius:5px;background:#fff;color:var(--navy);font:inherit;text-decoration:none;cursor:pointer}
     .primary{border-color:var(--green);background:var(--green);color:#fff}.danger{border-color:var(--danger);color:var(--danger)}
     .notice{min-height:20px;color:var(--green)}.missing{color:var(--danger)}
+    .link-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}.link-row input{margin-top:0}.link-row button{white-space:nowrap}
+    [hidden]{display:none!important}@media(max-width:620px){main{padding:28px 16px 48px}.panel{padding:18px}.link-row{grid-template-columns:1fr}.link-row button{width:100%}}
   </style>
 </head>
 <body>
@@ -38,18 +40,33 @@
     <div class="button-row"><button class="primary">Gem bruger</button><button type="button" class="danger" id="delete-user">Slet bruger</button></div>
     <p class="notice" id="notice"></p>
   </form>
+  <section class="panel" id="reset-panel" hidden>
+    <h2>Nulstil adgangskode</h2>
+    <p class="meta">Opret et personligt engangslink, som kan sendes manuelt til brugeren. Linket udløber efter 60 minutter.</p>
+    <button type="button" id="create-reset-link">Opret nulstillingslink</button>
+    <div id="reset-result" hidden>
+      <label>Nulstillingslink
+        <span class="link-row"><input id="reset-url" readonly><button type="button" id="copy-reset-link">Kopier link</button></span>
+      </label>
+      <p class="meta" id="reset-expiry"></p>
+    </div>
+    <p class="notice" id="reset-notice"></p>
+  </section>
 </main>
-<script src="portal-data.js?v=20260604-03"></script>
+<script src="portal-data.js?v=20260731-01"></script>
 <script src="portal-header.js?v=20260717-04"></script>
 <script>
 var userId=new URLSearchParams(location.search).get("id"), groups=[], selectedUserGroupIds=[], currentUser=null;
+function clearResetLink(){document.getElementById("reset-url").value="";document.getElementById("reset-expiry").textContent="";document.getElementById("reset-result").hidden=true}
 function groupName(id){var group=groups.find(function(g){return String(g.id)===String(id)});return group?group.name:"Gruppe "+id}
 function renderGroupPicker(){var selected=selectedUserGroupIds.map(String),options=groups.filter(function(g){return !selected.includes(String(g.id))});document.getElementById("user-group").innerHTML=options.length?options.map(function(g){return'<option value="'+g.id+'">'+PortalData.escape(g.name)+'</option>'}).join(""):'<option value="">Alle grupper er tilfoejet</option>';document.getElementById("user-group").disabled=!options.length;document.getElementById("user-groups").innerHTML=selected.length?selected.map(function(id){return'<span class="tag">'+PortalData.escape(groupName(id))+' <button type="button" data-remove-group="'+id+'">Fjern</button></span>'}).join(""):'<span class="meta">Ingen grupper valgt.</span>';document.getElementById("user-groups").querySelectorAll("[data-remove-group]").forEach(function(button){button.onclick=function(){var id=String(button.dataset.removeGroup);selectedUserGroupIds.splice(selectedUserGroupIds.indexOf(id),1);renderGroupPicker()}})}
-async function load(){groups=await PortalData.groups();var data=await PortalData.adminUsers({userId:userId,page:1,pageSize:5});currentUser=(data.users||[])[0];if(!currentUser){intro.textContent="Brugeren findes ikke.";return}selectedUserGroupIds=(currentUser.groupIds||[]).map(String);intro.textContent=currentUser.email;form.style.display="block";form.elements.email.value=currentUser.email;form.elements.role.value=currentUser.role;renderGroupPicker();profile.innerHTML=currentUser.profileId?'Profil: <a href="partner-profil.html?id='+encodeURIComponent(currentUser.profileId)+'">'+PortalData.escape(currentUser.profileName||"Se profil")+'</a> · <a href="admin-profil.html?userId='+encodeURIComponent(userId)+'">Rediger profil</a>':'<span class="missing">Profil mangler</span> · <a href="admin-profil.html?userId='+encodeURIComponent(userId)+'">Opret profil</a>'}
+async function load(){groups=await PortalData.groups();var data=await PortalData.adminUsers({userId:userId,page:1,pageSize:5});currentUser=(data.users||[])[0];if(!currentUser){intro.textContent="Brugeren findes ikke.";return}selectedUserGroupIds=(currentUser.groupIds||[]).map(String);intro.textContent=currentUser.email;form.style.display="block";document.getElementById("reset-panel").hidden=false;form.elements.email.value=currentUser.email;form.elements.role.value=currentUser.role;renderGroupPicker();profile.innerHTML=currentUser.profileId?'Profil: <a href="partner-profil.html?id='+encodeURIComponent(currentUser.profileId)+'">'+PortalData.escape(currentUser.profileName||"Se profil")+'</a> · <a href="admin-profil.html?userId='+encodeURIComponent(userId)+'">Rediger profil</a>':'<span class="missing">Profil mangler</span> · <a href="admin-profil.html?userId='+encodeURIComponent(userId)+'">Opret profil</a>'}
 PortalData.requireSession("admin").then(load);
 document.getElementById("add-user-group").onclick=function(){var select=document.getElementById("user-group");if(select.value&&!selectedUserGroupIds.includes(String(select.value))){selectedUserGroupIds.push(String(select.value));renderGroupPicker()}};
-form.onsubmit=async function(e){e.preventDefault();var d=Object.fromEntries(new FormData(form));d.userId=userId;d.groupIds=selectedUserGroupIds.slice();try{await PortalData.updateUser(d);notice.textContent="Brugeren er gemt.";form.elements.password.value="";load()}catch(x){notice.textContent=x.message}};
+form.onsubmit=async function(e){e.preventDefault();var d=Object.fromEntries(new FormData(form));d.userId=userId;d.groupIds=selectedUserGroupIds.slice();try{await PortalData.updateUser(d);notice.textContent="Brugeren er gemt.";form.elements.password.value="";clearResetLink();load()}catch(x){notice.textContent=x.message}};
 document.getElementById("delete-user").onclick=async function(){if(!confirm("Slet denne bruger? Profilen slettes ogsaa, hvis den er knyttet til brugeren."))return;try{await PortalData.deleteUser(userId);location.href="admin-brugere.html"}catch(x){notice.textContent=x.message}};
+document.getElementById("create-reset-link").onclick=async function(){if(!confirm("Opret et nyt nulstillingslink? Eventuelle tidligere links til brugeren bliver ugyldige."))return;var button=this,resetNotice=document.getElementById("reset-notice");clearResetLink();button.disabled=true;resetNotice.textContent="Opretter link...";try{var result=await PortalData.createPasswordResetLink(userId);document.getElementById("reset-url").value=result.url;document.getElementById("reset-expiry").textContent="Udløber: "+new Date(Number(result.expiresAt)).toLocaleString("da-DK");document.getElementById("reset-result").hidden=false;resetNotice.textContent="Linket er oprettet. Send det gennem en sikker kanal til "+result.email+"."}catch(x){resetNotice.textContent=x.message}finally{button.disabled=false}};
+document.getElementById("copy-reset-link").onclick=async function(){var input=document.getElementById("reset-url"),resetNotice=document.getElementById("reset-notice");try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(input.value)}else{input.select();document.execCommand("copy")}resetNotice.textContent="Linket er kopieret."}catch(x){input.select();resetNotice.textContent="Kopiering blev blokeret. Linket er markeret, så du kan kopiere det manuelt."}};
 </script>
 </body>
 </html>
