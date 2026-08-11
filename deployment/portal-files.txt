@@ -2,6 +2,7 @@
 # Keep this list explicit. One repository-relative file per line.
 
 .htaccess
+address-autocomplete.js
 api/bootstrap.php
 api/features.php
 api/index.php

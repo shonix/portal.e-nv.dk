@@ -38,6 +38,16 @@ xlsx.full.min.js             Browser-side XLSX parser
 The repository contains application code only. Database credentials, uploaded
 files and other runtime data must not be committed.
 
+## External address service
+
+Meeting administration uses Dataforsyningen's DAWA autocomplete service through
+`address-autocomplete.js`. Saved meetings contain only the selected address text,
+and manual entry remains available if the service cannot be reached.
+
+Dataforsyningen has announced that DAWA will close on 1 October 2026. Replace the
+provider implementation in `address-autocomplete.js` before that date; meeting
+data, forms and Google Maps links do not need to change when the provider changes.
+
 ## Simply.com server layout
 
 The expected production layout is:

@@ -16,6 +16,8 @@
     h1 { margin:0 0 12px; font-size:30px; }
     .date-line { display:flex; flex-wrap:wrap; gap:10px 24px; font-weight:bold; }
     .address { margin:12px 0 0; color:#fff; }
+    .address a { color:inherit; text-decoration-color:#ffffffaa; text-decoration-thickness:1px; text-underline-offset:4px; }
+    .address a:hover { text-decoration-color:#fff; }
     .details { padding:8px 24px 20px; }
     .row { display:grid; grid-template-columns:32px minmax(0,1fr); gap:12px; padding:16px 0; border-bottom:1px solid var(--line); }
     .row:last-child { border-bottom:0; }
@@ -401,7 +403,12 @@
       document.getElementById("title").textContent = meeting.title;
       document.getElementById("date").textContent = new Date(meeting.date + "T00:00:00").toLocaleDateString("da-DK", { day:"numeric", month:"long", year:"numeric" });
       document.getElementById("time").textContent = "kl. " + meeting.time;
-      document.getElementById("address").textContent = meeting.address;
+      var addressLink = document.createElement("a");
+      addressLink.href = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(meeting.address);
+      addressLink.target = "_blank";
+      addressLink.rel = "noopener";
+      addressLink.textContent = meeting.address;
+      document.getElementById("address").replaceChildren(addressLink);
       document.getElementById("details").innerHTML = Object.keys(labels).map(function (key) {
         return '<div class="row">' + icons[key] + '<div><h2>' + labels[key] + '</h2><p class="multiline">' + PortalData.escape(meeting[key] || "Ikke tilf\u00f8jet endnu") + '</p></div></div>';
       }).join("");
