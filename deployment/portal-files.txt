@@ -15,6 +15,7 @@ admin-gruppe.html
 admin-grupper.html
 admin-invitationer.html
 admin-labels.html
+admin-materialer.html
 admin-moede-indstillinger.html
 admin-moedeinvitationer.html
 admin-moeder-oversigt.html
@@ -25,6 +26,7 @@ favicon.svg
 gruppe.html
 index.html
 login.html
+materialer.html
 min-profil.html
 moede-invitation.html
 moede.html

@@ -178,6 +178,20 @@ CREATE TABLE IF NOT EXISTS meeting_attachments (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS partner_materials (
+  id BIGSERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  description TEXT,
+  category TEXT NOT NULL DEFAULT 'other'
+    CHECK (category IN ('logo', 'email_signature', 'web', 'flyer', 'other')),
+  original_name TEXT NOT NULL,
+  stored_name TEXT NOT NULL UNIQUE,
+  mime_type TEXT NOT NULL,
+  file_size BIGINT NOT NULL CHECK (file_size >= 0),
+  uploaded_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS meeting_guests (
   id BIGSERIAL PRIMARY KEY,
   meeting_id BIGINT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
@@ -201,6 +215,7 @@ ALTER TABLE meeting_guests
 CREATE INDEX IF NOT EXISTS meeting_invitation_recipients_user_idx ON meeting_invitation_recipients (user_id);
 CREATE INDEX IF NOT EXISTS meeting_rsvps_user_idx ON meeting_rsvps (user_id);
 CREATE INDEX IF NOT EXISTS meeting_attachments_meeting_idx ON meeting_attachments (meeting_id);
+CREATE INDEX IF NOT EXISTS partner_materials_created_idx ON partner_materials (created_at DESC);
 CREATE INDEX IF NOT EXISTS meeting_guests_meeting_idx ON meeting_guests (meeting_id);
 CREATE INDEX IF NOT EXISTS meeting_guests_added_by_idx ON meeting_guests (added_by);
 CREATE UNIQUE INDEX IF NOT EXISTS partner_labels_name_lower_uidx ON partner_labels (LOWER(TRIM(name)));

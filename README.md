@@ -61,6 +61,7 @@ hosting-root/
     ...
   portal-private/            Persistent, non-public uploaded files
     meeting-attachments/
+    partner-materials/
     profile-pictures/
   public_html/               Main website; unrelated to portal deployment
 ```
@@ -69,7 +70,7 @@ Only the contents of the repository's public application are deployed to
 `portal/`. A portal deployment must never replace or delete `portal-config.php`,
 `portal-private/` or `public_html/`.
 
-The PHP process must have write access to the two directories inside
+The PHP process must have write access to the three directories inside
 `portal-private/`. The application creates them with restrictive permissions if
 they do not already exist.
 
@@ -89,6 +90,8 @@ return [
     'mail_from' => 'noreply@e-nv.dk',
     'meeting_attachment_dir' => __DIR__ . '/portal-private/meeting-attachments',
     'meeting_attachment_max_bytes' => 10485760,
+    'partner_material_dir' => __DIR__ . '/portal-private/partner-materials',
+    'partner_material_max_bytes' => 26214400,
     'profile_picture_dir' => __DIR__ . '/portal-private/profile-pictures',
     'profile_picture_max_bytes' => 2097152,
 ];
@@ -105,6 +108,8 @@ Configuration fields:
 | `mail_from` | For mail | Sender address passed to PHP `mail()`. This does not configure SMTP by itself. |
 | `meeting_attachment_dir` | Recommended | Private storage path for meeting attachments. |
 | `meeting_attachment_max_bytes` | No | Attachment limit in bytes; defaults to 10 MB. |
+| `partner_material_dir` | Recommended | Private storage path for downloadable partner materials. |
+| `partner_material_max_bytes` | No | Partner-material limit in bytes; defaults to 25 MB. |
 | `profile_picture_dir` | Recommended | Private storage path for profile pictures. |
 | `profile_picture_max_bytes` | No | Profile-picture limit in bytes; defaults to 2 MB. |
 
@@ -141,6 +146,7 @@ the migrations that have not previously been applied, in numeric order:
 | 014 | Administrator-generated password-reset links |
 | 015 | Admin-only meeting attendance tracking |
 | 016 | Administrator-managed information banner |
+| 017 | Downloadable partner materials and upload metadata |
 
 The project does not yet have a migration ledger. Record the last applied
 migration as part of the deployment notes. Back up the database before applying

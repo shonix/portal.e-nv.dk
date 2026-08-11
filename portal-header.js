@@ -31,7 +31,7 @@
   window.addEventListener("resize", updateHeaderOffset);
   var header = document.createElement("header");
   header.className = "site-header";
-  header.innerHTML = '<a class="site-brand" href="index.html"><span class="site-logo">EP</span><span>Partnerportal</span></a><nav class="site-nav"><a href="index.html">Forside</a><a href="login.html" data-auth="guest">Log ind</a><a href="min-profil.html" data-auth="member" style="display:none">Min profil</a><a href="admin.html" data-auth="admin" style="display:none">Administration</a><a href="#" data-auth="logout" style="display:none">Log ud</a></nav>';
+  header.innerHTML = '<a class="site-brand" href="index.html"><span class="site-logo">EP</span><span>Partnerportal</span></a><nav class="site-nav"><a href="index.html">Forside</a><a href="materialer.html" data-auth="member" style="display:none">Materiale</a><a href="login.html" data-auth="guest">Log ind</a><a href="min-profil.html" data-auth="member" style="display:none">Min profil</a><a href="admin.html" data-auth="admin" style="display:none">Administration</a><a href="#" data-auth="logout" style="display:none">Log ud</a></nav>';
   document.body.insertBefore(header, document.body.firstChild);
   PortalData.session().then(function (session) {
     header.querySelectorAll('[data-auth="guest"]').forEach(function (link) { link.style.display = session.loggedIn ? "none" : "inline"; });

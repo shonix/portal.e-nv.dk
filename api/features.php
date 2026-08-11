@@ -12,6 +12,11 @@ function attachmentDirectory(array $config): string
     return (string) ($config['meeting_attachment_dir'] ?? (dirname(__DIR__, 2) . '/portal-private/meeting-attachments'));
 }
 
+function partnerMaterialDirectory(array $config): string
+{
+    return (string) ($config['partner_material_dir'] ?? (dirname(__DIR__, 2) . '/portal-private/partner-materials'));
+}
+
 function officeArchiveMatches(string $path, string $extension): bool
 {
     if (!class_exists(ZipArchive::class)) return false;
@@ -814,6 +819,141 @@ if ($method === 'GET' && $action === 'meeting-download-attachment') {
     header('Content-Length: ' . (string) $attachment['file_size']);
     $disposition = ($_GET['preview'] ?? '') === '1' ? 'inline' : 'attachment';
     header('Content-Disposition: ' . $disposition . '; filename="' . addcslashes((string) $attachment['original_name'], '"\\') . '"');
+    session_write_close();
+    readfile($path);
+    exit;
+}
+
+if ($method === 'GET' && $action === 'partner-materials') {
+    requireLogin();
+    $statement = $pdo->query(
+        'SELECT id::text, title, description, category,
+                original_name AS "originalName", mime_type AS "mimeType",
+                file_size::int AS "size", created_at::text AS "createdAt"
+         FROM partner_materials
+         ORDER BY created_at DESC, id DESC'
+    );
+    respond(['materials' => $statement->fetchAll()]);
+}
+
+if ($method === 'POST' && $action === 'admin-upload-partner-material') {
+    requireAdmin();
+    $title = trim((string) ($_POST['title'] ?? ''));
+    $description = trim((string) ($_POST['description'] ?? ''));
+    $category = trim((string) ($_POST['category'] ?? ''));
+    $file = $_FILES['file'] ?? null;
+    $categories = ['logo', 'email_signature', 'web', 'flyer', 'other'];
+
+    if ($title === '' || strlen($title) > 160) {
+        respond(['error' => 'Titlen skal være mellem 1 og 160 tegn.'], 422);
+    }
+    if (strlen($description) > 1000) {
+        respond(['error' => 'Beskrivelsen må højst være 1000 tegn.'], 422);
+    }
+    if (!in_array($category, $categories, true)) {
+        respond(['error' => 'Vælg en gyldig kategori.'], 422);
+    }
+    if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        respond(['error' => 'Vælg en fil.'], 422);
+    }
+
+    $maxSize = (int) ($config['partner_material_max_bytes'] ?? 25 * 1024 * 1024);
+    if ((int) $file['size'] <= 0 || (int) $file['size'] > $maxSize) {
+        respond(['error' => 'Filen er tom eller større end 25 MB.'], 422);
+    }
+
+    $extension = strtolower(pathinfo((string) $file['name'], PATHINFO_EXTENSION));
+    $allowed = [
+        'pdf' => ['application/pdf'],
+        'jpg' => ['image/jpeg'], 'jpeg' => ['image/jpeg'],
+        'png' => ['image/png'], 'webp' => ['image/webp'],
+        'svg' => ['image/svg+xml', 'application/xml', 'text/xml', 'text/plain'],
+        'zip' => ['application/zip', 'application/x-zip-compressed', 'application/octet-stream'],
+        'eps' => ['application/postscript', 'application/octet-stream'],
+        'ai' => ['application/pdf', 'application/postscript', 'application/octet-stream'],
+    ];
+    if (!isset($allowed[$extension])) {
+        respond(['error' => 'Filtypen er ikke tilladt. Brug PDF, JPG, PNG, WebP, SVG, ZIP, EPS eller AI.'], 422);
+    }
+    $mime = (new finfo(FILEINFO_MIME_TYPE))->file((string) $file['tmp_name']) ?: 'application/octet-stream';
+    if (!in_array($mime, $allowed[$extension], true)) {
+        respond(['error' => 'Filens indhold matcher ikke filtypen.'], 422);
+    }
+
+    $directory = partnerMaterialDirectory($config);
+    if (!is_dir($directory) && !mkdir($directory, 0750, true) && !is_dir($directory)) {
+        respond(['error' => 'Uploadmappen kunne ikke oprettes.'], 500);
+    }
+    $directory = realpath($directory) ?: '';
+    if ($directory === '') respond(['error' => 'Uploadmappen kunne ikke valideres.'], 500);
+
+    $storedName = bin2hex(random_bytes(20)) . '.' . $extension;
+    $destination = $directory . DIRECTORY_SEPARATOR . $storedName;
+    if (!move_uploaded_file((string) $file['tmp_name'], $destination)) {
+        respond(['error' => 'Filen kunne ikke gemmes.'], 500);
+    }
+
+    $statement = $pdo->prepare(
+        'INSERT INTO partner_materials
+            (title, description, category, original_name, stored_name, mime_type, file_size, uploaded_by)
+         VALUES
+            (:title, :description, :category, :original_name, :stored_name, :mime_type, :file_size, :uploaded_by)
+         RETURNING id::text'
+    );
+    try {
+        $statement->execute([
+            'title' => $title,
+            'description' => $description !== '' ? $description : null,
+            'category' => $category,
+            'original_name' => basename((string) $file['name']),
+            'stored_name' => $storedName,
+            'mime_type' => $mime,
+            'file_size' => (int) $file['size'],
+            'uploaded_by' => $userId,
+        ]);
+    } catch (Throwable $exception) {
+        @unlink($destination);
+        throw $exception;
+    }
+    respond(['materialId' => $statement->fetchColumn()], 201);
+}
+
+if ($method === 'POST' && $action === 'admin-delete-partner-material') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['materialId']);
+    $statement = $pdo->prepare('DELETE FROM partner_materials WHERE id = :id RETURNING stored_name');
+    $statement->execute(['id' => (int) $body['materialId']]);
+    $storedName = $statement->fetchColumn();
+    if (!$storedName) respond(['error' => 'Materialet findes ikke.'], 404);
+
+    $path = partnerMaterialDirectory($config) . DIRECTORY_SEPARATOR . basename((string) $storedName);
+    if (is_file($path)) @unlink($path);
+    respond(['ok' => true]);
+}
+
+if ($method === 'GET' && $action === 'partner-material-download') {
+    requireLogin();
+    $materialId = (int) ($_GET['materialId'] ?? 0);
+    $statement = $pdo->prepare(
+        'SELECT original_name, stored_name, mime_type, file_size
+         FROM partner_materials WHERE id = :id'
+    );
+    $statement->execute(['id' => $materialId]);
+    $material = $statement->fetch();
+    if (!$material) respond(['error' => 'Materialet findes ikke.'], 404);
+
+    $path = partnerMaterialDirectory($config) . DIRECTORY_SEPARATOR . basename((string) $material['stored_name']);
+    if (!is_file($path)) respond(['error' => 'Filen mangler på serveren.'], 404);
+
+    $downloadName = preg_replace('/[\r\n"]+/', '_', basename((string) $material['original_name'])) ?: 'materiale';
+    $asciiName = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $downloadName) ?: 'materiale';
+    header_remove('Content-Type');
+    header('Content-Type: ' . $material['mime_type']);
+    header('Content-Length: ' . (string) $material['file_size']);
+    header('X-Content-Type-Options: nosniff');
+    header('Content-Disposition: attachment; filename="' . addcslashes($asciiName, '"\\')
+        . '"; filename*=UTF-8\'\'' . rawurlencode($downloadName));
     session_write_close();
     readfile($path);
     exit;

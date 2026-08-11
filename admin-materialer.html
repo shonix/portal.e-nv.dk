@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Materiale til partnere | Administration</title>
+  <link rel="stylesheet" href="portal-header.css?v=20260717-01">
+  <style>
+    :root{--navy:#15243a;--blue:#163674;--red:#b52d2d;--line:#d6dde3;--muted:#5d6b80;--page:#f5f7f9;--surface:#fff;--soft:#eef3f8}*{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--navy);font-family:Arial,Helvetica,sans-serif}main{max-width:920px;margin:auto;padding:40px 24px 64px}a{color:var(--blue);text-underline-offset:3px}h1{margin:10px 0 6px}.intro,.help{color:var(--muted);line-height:1.5}.layout{display:grid;grid-template-columns:minmax(280px,.72fr) minmax(0,1.28fr);gap:18px;align-items:start;margin-top:22px}.panel{padding:20px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}h2{margin:0 0 14px;font-size:20px}label{display:block;margin-top:14px;color:var(--muted);font-size:13px;font-weight:bold}input,select,textarea{display:block;width:100%;margin-top:6px;padding:10px 11px;border:1px solid var(--line);border-radius:5px;background:#fff;color:var(--navy);font:inherit}textarea{min-height:92px;resize:vertical}input[type="file"]{padding:8px}.help{margin:9px 0 0;font-size:13px}.button-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:18px}button,.button{min-height:42px;padding:9px 14px;border:1px solid var(--blue);border-radius:5px;background:var(--blue);color:#fff;font:inherit;cursor:pointer;text-decoration:none}button:disabled{cursor:wait;opacity:.65}.status{margin:0;color:var(--blue);line-height:1.4}.material-list{display:grid;gap:9px}.material{padding:14px;border:1px solid var(--line);border-radius:7px}.material-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.material h3{margin:0 0 4px;font-size:16px}.category{display:inline-block;margin-bottom:6px;padding:3px 6px;border-radius:4px;background:var(--soft);color:var(--blue);font-size:10px;font-weight:bold;text-transform:uppercase}.description{margin:6px 0;color:var(--muted);font-size:14px;line-height:1.4;white-space:pre-wrap}.meta{margin:0;color:var(--muted);font-size:12px;overflow-wrap:anywhere}.actions{display:flex;gap:8px;margin-top:11px}.actions a,.delete{min-height:36px;padding:7px 10px;font-size:14px}.delete{border-color:#d9b2b2;background:#fff;color:var(--red)}.empty{margin:0;padding:24px 12px;color:var(--muted);text-align:center}@media(max-width:760px){main{padding:28px 16px 48px}.layout{grid-template-columns:1fr}.panel{padding:17px}.material-top{flex-direction:column}.actions{display:grid;grid-template-columns:1fr 1fr}.actions a,.delete{display:flex;align-items:center;justify-content:center;width:100%}}
+  </style>
+</head>
+<body>
+  <main>
+    <a href="admin.html">&larr; Administration</a>
+    <h1>Materiale til partnere</h1>
+    <p class="intro">Upload og administrer de filer, som alle brugere med login kan hente.</p>
+
+    <div class="layout">
+      <form class="panel" id="upload-form">
+        <h2>Upload materiale</h2>
+        <label>Titel
+          <input type="text" name="title" maxlength="160" required>
+        </label>
+        <label>Kategori
+          <select name="category" required>
+            <option value="logo">Logo</option>
+            <option value="email_signature">E-mailsignatur</option>
+            <option value="web">Hjemmeside og grafik</option>
+            <option value="flyer">Flyer</option>
+            <option value="other">Andet</option>
+          </select>
+        </label>
+        <label>Kort beskrivelse
+          <textarea name="description" maxlength="1000"></textarea>
+        </label>
+        <label>Fil
+          <input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.svg,.zip,.eps,.ai" required>
+        </label>
+        <p class="help">PDF, JPG, PNG, WebP, SVG, ZIP, EPS eller AI. Maks. 25 MB.</p>
+        <div class="button-row">
+          <button type="submit">Upload</button>
+          <p class="status" id="upload-status" role="status"></p>
+        </div>
+      </form>
+
+      <section class="panel" aria-labelledby="materials-heading">
+        <h2 id="materials-heading">Uploadede filer</h2>
+        <p class="status" id="list-status" role="status">Henter materiale...</p>
+        <div class="material-list" id="material-list"></div>
+      </section>
+    </div>
+  </main>
+
+  <script src="portal-data.js?v=20260811-02"></script>
+  <script src="portal-header.js?v=20260811-04"></script>
+  <script>
+    var categoryLabels={logo:"Logo",email_signature:"E-mailsignatur",web:"Hjemmeside og grafik",flyer:"Flyer",other:"Andet"};
+    var form=document.getElementById("upload-form"),uploadStatus=document.getElementById("upload-status"),listStatus=document.getElementById("list-status"),list=document.getElementById("material-list"),uploadButton=form.querySelector('button[type="submit"]');
+    function fileSize(bytes){if(bytes<1024)return bytes+" B";if(bytes<1048576)return (bytes/1024).toFixed(bytes<10240?1:0)+" KB";return (bytes/1048576).toFixed(1)+" MB"}
+    async function loadMaterials(){listStatus.hidden=false;listStatus.textContent="Henter materiale...";try{var items=await PortalData.partnerMaterials();listStatus.hidden=true;if(!items.length){list.innerHTML='<p class="empty">Der er endnu ikke uploadet materiale.</p>';return}list.innerHTML=items.map(function(item){return '<article class="material"><div class="material-top"><div><span class="category">'+PortalData.escape(categoryLabels[item.category]||"Andet")+'</span><h3>'+PortalData.escape(item.title)+'</h3></div></div>'+(item.description?'<p class="description">'+PortalData.escape(item.description)+'</p>':'')+'<p class="meta">'+PortalData.escape(item.originalName)+' &middot; '+PortalData.escape(fileSize(Number(item.size)||0))+'</p><div class="actions"><a class="button" href="api/index.php?action=partner-material-download&amp;materialId='+encodeURIComponent(item.id)+'">Hent</a><button class="delete" type="button" data-delete="'+PortalData.escape(item.id)+'">Slet</button></div></article>'}).join("")}catch(error){listStatus.hidden=false;listStatus.textContent=error.message}}
+    list.addEventListener("click",async function(event){var button=event.target.closest("[data-delete]");if(!button||!confirm("Vil du slette dette materiale?"))return;button.disabled=true;try{await PortalData.deletePartnerMaterial(button.dataset.delete);await loadMaterials()}catch(error){listStatus.hidden=false;listStatus.textContent=error.message;button.disabled=false}});
+    form.addEventListener("submit",async function(event){event.preventDefault();uploadStatus.textContent="";uploadButton.disabled=true;var file=form.elements.file.files[0];try{await PortalData.uploadPartnerMaterial({title:form.elements.title.value,category:form.elements.category.value,description:form.elements.description.value,file:file});form.reset();uploadStatus.textContent="Materialet er uploadet.";await loadMaterials()}catch(error){uploadStatus.textContent=error.message}finally{uploadButton.disabled=false}});
+    PortalData.requireSession("admin").then(loadMaterials).catch(function(error){listStatus.textContent=error.message});
+  </script>
+</body>
+</html>

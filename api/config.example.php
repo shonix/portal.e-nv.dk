@@ -9,6 +9,8 @@ return [
     'mail_from' => 'noreply@e-nv.dk',
     'meeting_attachment_dir' => __DIR__ . '/portal-private/meeting-attachments',
     'meeting_attachment_max_bytes' => 10485760,
+    'partner_material_dir' => __DIR__ . '/portal-private/partner-materials',
+    'partner_material_max_bytes' => 26214400,
     'profile_picture_dir' => __DIR__ . '/portal-private/profile-pictures',
     'profile_picture_max_bytes' => 2097152,
 ];
