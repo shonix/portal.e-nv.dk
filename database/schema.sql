@@ -147,6 +147,8 @@ CREATE TABLE IF NOT EXISTS meeting_rsvps (
   responded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   reviewed_at TIMESTAMPTZ,
   reviewed_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  attended_at TIMESTAMPTZ,
+  attendance_marked_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
   PRIMARY KEY (meeting_id, user_id)
 );
 
@@ -168,8 +170,18 @@ CREATE TABLE IF NOT EXISTS meeting_guests (
   name TEXT NOT NULL,
   company TEXT NOT NULL,
   email TEXT NOT NULL,
+  attended_at TIMESTAMPTZ,
+  attendance_marked_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE meeting_rsvps
+  ADD COLUMN IF NOT EXISTS attended_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS attendance_marked_by BIGINT REFERENCES users(id) ON DELETE SET NULL;
+
+ALTER TABLE meeting_guests
+  ADD COLUMN IF NOT EXISTS attended_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS attendance_marked_by BIGINT REFERENCES users(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS meeting_invitation_recipients_user_idx ON meeting_invitation_recipients (user_id);
 CREATE INDEX IF NOT EXISTS meeting_rsvps_user_idx ON meeting_rsvps (user_id);

@@ -6,7 +6,11 @@ if (PHP_SAPI !== 'cli' || $argc !== 3) {
     exit(1);
 }
 
-$config = require dirname(__DIR__, 2) . '/portal-config.php';
+$configuredPath = trim((string) getenv('PORTAL_CONFIG_PATH'));
+$configPath = $configuredPath !== ''
+    ? $configuredPath
+    : dirname(__DIR__, 2) . '/portal-config.php';
+$config = require $configPath;
 $pdo = new PDO($config['dsn'], $config['user'], $config['password'], [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
 ]);

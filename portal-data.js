@@ -43,6 +43,8 @@
     meetingInvitation:function(token){return request("meeting-invitation",null,{token:token});},
     saveMeetingRsvp:function(token,response){return post("meeting-rsvp",{token:token,response:response});},
     reviewRsvp:function(data){return post("admin-review-rsvp",data);},
+    meetingAttendance:function(meetingId){return request("admin-meeting-attendance",null,{meetingId:meetingId});},
+    saveMeetingAttendance:function(data){return post("admin-meeting-attendance",data);},
     meetingAttachments:async function(meetingId){return (await request("admin-meeting-attachments",null,{meetingId:meetingId})).attachments;},
     publicMeetingAttachments:async function(meetingId){return (await request("meeting-attachments",null,{meetingId:meetingId})).attachments;},
     uploadMeetingAttachment:function(meetingId,file){var data=new FormData();data.append("meetingId",meetingId);data.append("file",file);return request("admin-upload-attachment",{method:"POST",body:data});},

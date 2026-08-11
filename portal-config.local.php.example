@@ -1,0 +1,13 @@
+<?php
+// Local-only configuration used by scripts/start-dev.ps1.
+return [
+    'dsn' => 'pgsql:host=127.0.0.1;port=54329;dbname=partner_portal',
+    'user' => 'portal',
+    'password' => 'portal-local-only',
+    'portal_base_url' => 'http://127.0.0.1:8000',
+    'mail_from' => 'noreply@local.test',
+    'meeting_attachment_dir' => __DIR__ . '/.dev/meeting-attachments',
+    'meeting_attachment_max_bytes' => 10485760,
+    'profile_picture_dir' => __DIR__ . '/.dev/profile-pictures',
+    'profile_picture_max_bytes' => 2097152,
+];

@@ -39,6 +39,7 @@ build/
 deploy-*.tar.gz
 
 # Logs, caches and temporary files
+.dev/
 *.log
 *.tmp
 *.temp

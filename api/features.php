@@ -399,6 +399,112 @@ if ($method === 'POST' && $action === 'admin-review-rsvp') {
     respond(['ok' => true]);
 }
 
+if ($method === 'GET' && $action === 'admin-meeting-attendance') {
+    requireAdmin();
+    $meetingId = (int) ($_GET['meetingId'] ?? 0);
+    if ($meetingId <= 0) respond(['error' => 'Møde er påkrævet.'], 422);
+
+    $meeting = $pdo->prepare('SELECT id::text, title FROM meetings WHERE id = :id');
+    $meeting->execute(['id' => $meetingId]);
+    $meetingRow = $meeting->fetch();
+    if (!$meetingRow) respond(['error' => 'Mødet findes ikke.'], 404);
+
+    $attendees = $pdo->prepare(
+        "SELECT 'user' AS \"attendeeType\", u.id::text AS \"attendeeId\",
+                COALESCE(NULLIF(TRIM(p.name), ''), u.email) AS name,
+                COALESCE(p.company, '') AS company, u.email,
+                mr.approval_status AS \"approvalStatus\",
+                CASE WHEN mr.attended_at IS NOT NULL THEN 1 ELSE 0 END AS attended,
+                mr.attended_at::text AS \"attendedAt\"
+         FROM meeting_rsvps mr
+         JOIN users u ON u.id = mr.user_id
+         LEFT JOIN LATERAL (
+             SELECT candidate.name, candidate.company
+             FROM partners candidate
+             WHERE candidate.user_id = u.id
+                OR (candidate.user_id IS NULL AND LOWER(TRIM(candidate.email)) = LOWER(TRIM(u.email)))
+             ORDER BY candidate.user_id NULLS LAST, candidate.id
+             LIMIT 1
+         ) p ON TRUE
+         WHERE mr.meeting_id = :user_meeting_id
+           AND (mr.response = 'attending' OR mr.attended_at IS NOT NULL)
+         UNION ALL
+         SELECT 'guest' AS \"attendeeType\", mg.id::text AS \"attendeeId\",
+                mg.name, mg.company, mg.email, NULL AS \"approvalStatus\",
+                CASE WHEN mg.attended_at IS NOT NULL THEN 1 ELSE 0 END AS attended,
+                mg.attended_at::text AS \"attendedAt\"
+         FROM meeting_guests mg
+         WHERE mg.meeting_id = :guest_meeting_id
+         ORDER BY name, email"
+    );
+    $attendees->execute([
+        'user_meeting_id' => $meetingId,
+        'guest_meeting_id' => $meetingId,
+    ]);
+    $rows = $attendees->fetchAll();
+    foreach ($rows as &$row) $row['attended'] = (bool) $row['attended'];
+    unset($row);
+    $attendedCount = count(array_filter($rows, fn(array $row): bool => (bool) $row['attended']));
+    respond([
+        'meeting' => $meetingRow,
+        'attendees' => $rows,
+        'summary' => ['attended' => $attendedCount, 'total' => count($rows)],
+    ]);
+}
+
+if ($method === 'POST' && $action === 'admin-meeting-attendance') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['meetingId', 'attendeeType', 'attendeeId']);
+    if (!array_key_exists('attended', $body) || !is_bool($body['attended'])) {
+        respond(['error' => 'Fremmødestatus skal være sand eller falsk.'], 422);
+    }
+
+    $meetingId = (int) $body['meetingId'];
+    $attendeeId = (int) $body['attendeeId'];
+    $attendeeType = (string) $body['attendeeType'];
+    $attended = $body['attended'] ? 1 : 0;
+    if ($meetingId <= 0 || $attendeeId <= 0 || !in_array($attendeeType, ['user', 'guest'], true)) {
+        respond(['error' => 'Ugyldig deltager.'], 422);
+    }
+
+    if ($attendeeType === 'user') {
+        $update = $pdo->prepare(
+            'UPDATE meeting_rsvps
+             SET attended_at = CASE WHEN :attended = 1 THEN NOW() ELSE NULL END,
+                 attendance_marked_by = CASE WHEN :marked = 1 THEN CAST(:admin_id AS BIGINT) ELSE NULL::BIGINT END
+             WHERE meeting_id = :meeting_id AND user_id = :attendee_id
+               AND (:may_uncheck = 0 OR response = \'attending\')
+             RETURNING attended_at::text AS "attendedAt"'
+        );
+    } else {
+        $update = $pdo->prepare(
+            'UPDATE meeting_guests
+             SET attended_at = CASE WHEN :attended = 1 THEN NOW() ELSE NULL END,
+                 attendance_marked_by = CASE WHEN :marked = 1 THEN CAST(:admin_id AS BIGINT) ELSE NULL::BIGINT END
+             WHERE meeting_id = :meeting_id AND id = :attendee_id
+             RETURNING attended_at::text AS "attendedAt"'
+        );
+    }
+    $parameters = [
+        'attended' => $attended,
+        'marked' => $attended,
+        'admin_id' => $userId,
+        'meeting_id' => $meetingId,
+        'attendee_id' => $attendeeId,
+    ];
+    if ($attendeeType === 'user') $parameters['may_uncheck'] = $attended;
+    $update->execute($parameters);
+    $result = $update->fetch();
+    if (!$result) respond(['error' => 'Deltageren findes ikke på dette møde.'], 404);
+    respond([
+        'attendeeType' => $attendeeType,
+        'attendeeId' => (string) $attendeeId,
+        'attended' => (bool) $body['attended'],
+        'attendedAt' => $result['attendedAt'],
+    ]);
+}
+
 if ($method === 'GET' && $action === 'admin-meeting-attachments') {
     requireAdmin();
     $meetingId = (int) ($_GET['meetingId'] ?? 0);

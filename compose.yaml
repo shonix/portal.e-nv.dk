@@ -1,0 +1,21 @@
+name: e-nv-portal-dev
+
+services:
+  database:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: partner_portal
+      POSTGRES_USER: portal
+      POSTGRES_PASSWORD: portal-local-only
+    ports:
+      - "127.0.0.1:54329:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "psql -U portal -d partner_portal -c 'SELECT 1' >/dev/null"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - portal-postgres-data:/var/lib/postgresql/data
+
+volumes:
+  portal-postgres-data:

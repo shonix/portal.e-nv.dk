@@ -129,6 +129,7 @@ the migrations that have not previously been applied, in numeric order:
 | 012 | Meeting guests |
 | 013 | Group bulletin board |
 | 014 | Administrator-generated password-reset links |
+| 015 | Admin-only meeting attendance tracking |
 
 The project does not yet have a migration ledger. Record the last applied
 migration as part of the deployment notes. Back up the database before applying
@@ -155,17 +156,48 @@ Do not leave database maintenance scripts in the public portal.
 
 ## Local development
 
-1. Create a local PostgreSQL database and run `database/schema.sql`.
-2. Place a local `portal-config.php` one directory above the repository root
-   (two directory levels above `api/`), or reproduce the same folder
-   relationship in a local hosting root.
-3. Start PHP's development server from the repository root:
+Local development uses the installed PHP runtime and a PostgreSQL 16 container.
+Docker Desktop must be installed and running. The setup remains isolated from
+the parent-level production configuration.
 
-```bash
-php -S 127.0.0.1:8000
+Initialize PostgreSQL, the schema, sample data and a local administrator:
+
+```powershell
+pwsh -File scripts/setup-dev.ps1
 ```
 
-4. Open `http://127.0.0.1:8000/index.html`.
+The script generates an ignored `.dev/php.ini`, enables the required PHP
+extensions, creates the ignored `portal-config.local.php`, and starts the
+`database` service from `compose.yaml`. It does not read or modify the normal
+`portal-config.php` outside the repository.
+
+Start the application:
+
+```powershell
+pwsh -File scripts/start-dev.ps1
+```
+
+Use `pwsh -File scripts/start-dev.ps1 -Background` to run PHP without keeping a
+terminal open. `stop-dev.ps1` also stops a server started in this mode.
+
+Open `http://127.0.0.1:8000/index.html` and sign in with:
+
+```text
+admin@local.test
+LocalDev123!
+```
+
+The seeded meeting is available at
+`http://127.0.0.1:8000/moede.html?id=lokalt-testmoede`.
+
+Stop PostgreSQL after ending the PHP server with Ctrl+C:
+
+```powershell
+pwsh -File scripts/stop-dev.ps1
+```
+
+The Docker volume is preserved between sessions. To recreate the local database
+from scratch, run `docker compose down -v` and then rerun `setup-dev.ps1`.
 
 Apache's extensionless URL rewrites are not applied by PHP's built-in server,
 so use the `.html` URLs during local development.

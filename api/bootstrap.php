@@ -14,7 +14,10 @@ session_set_cookie_params([
 ]);
 session_start();
 
-$configPath = dirname(__DIR__, 2) . '/portal-config.php';
+$configuredPath = trim((string) getenv('PORTAL_CONFIG_PATH'));
+$configPath = $configuredPath !== ''
+    ? $configuredPath
+    : dirname(__DIR__, 2) . '/portal-config.php';
 if (!is_file($configPath)) {
     respond(['error' => 'Server configuration is missing.'], 500);
 }

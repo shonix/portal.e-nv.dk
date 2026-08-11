@@ -28,6 +28,31 @@
     .file-item { display:flex; justify-content:space-between; gap:14px; align-items:center; padding:12px 0; border-bottom:1px solid var(--line); }
     .file-item:last-child { border-bottom:0; }
     .file-actions { display:flex; flex-wrap:wrap; gap:10px; }
+    .attendance-module { margin-top:18px; overflow:hidden; border:1px solid var(--line); border-radius:8px; background:var(--surface); }
+    .attendance-module summary { display:flex; justify-content:space-between; gap:16px; align-items:center; min-height:58px; padding:14px 18px; cursor:pointer; list-style:none; }
+    .attendance-module summary::-webkit-details-marker { display:none; }
+    .attendance-module summary strong { color:var(--navy); font-size:16px; }
+    .attendance-summary { display:flex; align-items:center; gap:10px; }
+    .attendance-summary::before { content:"+"; width:24px; color:var(--green); font-size:22px; line-height:1; text-align:center; }
+    .attendance-module[open] .attendance-summary::before { content:"−"; }
+    .attendance-count { flex:0 0 auto; padding:5px 9px; border-radius:999px; background:#e8f4ef; color:var(--green); font-size:12px; font-weight:bold; }
+    .attendance-body { padding:0 18px 18px; border-top:1px solid var(--line); }
+    .attendance-toolbar { display:grid; grid-template-columns:minmax(180px,1fr) auto; gap:12px; align-items:end; padding:16px 0 12px; }
+    .attendance-filters { display:grid; grid-template-columns:repeat(3,auto); gap:6px; }
+    .attendance-filters button { min-height:40px; border-color:var(--line); background:#fff; color:var(--navy); }
+    .attendance-filters button[aria-pressed="true"] { border-color:var(--green); background:var(--green); color:#fff; }
+    .attendance-list { overflow:hidden; border:1px solid var(--line); border-radius:8px; }
+    .attendance-row { display:grid; grid-template-columns:24px minmax(0,1fr); gap:12px; align-items:center; min-height:62px; margin:0; padding:10px 12px; border-bottom:1px solid var(--line); color:var(--navy); cursor:pointer; }
+    .attendance-row:last-child { border-bottom:0; }
+    .attendance-row.is-attended { background:#eef8f3; }
+    .attendance-row input { width:22px!important; height:22px!important; min-width:22px; margin:0!important; padding:0; accent-color:var(--green); }
+    .attendance-person { min-width:0; }
+    .attendance-person strong { display:block; margin-bottom:3px; overflow-wrap:anywhere; }
+    .attendance-person small { display:block; color:var(--muted); font-size:13px; font-weight:normal; line-height:1.35; overflow-wrap:anywhere; }
+    .attendance-badges { display:flex; flex-wrap:wrap; gap:5px; margin-top:5px; }
+    .attendance-badge { padding:3px 6px; border-radius:999px; background:#edf1f5; color:var(--muted); font-size:11px; font-weight:bold; }
+    .attendance-badge.pending { background:#fff4d6; color:#775a00; }
+    .attendance-notice { min-height:20px; margin:0 0 8px; color:var(--muted); font-size:13px; }
     .guest-module { margin-top:18px; padding:22px 24px; border:1px solid var(--line); border-radius:8px; background:var(--surface); }
     .guest-form { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; align-items:end; margin-top:12px; }
     .guest-form label:first-child { grid-column:1 / -1; }
@@ -57,7 +82,7 @@
     .pager-buttons { display:flex; gap:8px; }
     .secondary { border-color:var(--line); background:#fff; color:var(--navy); }
     .empty { padding:20px; color:var(--muted); text-align:center; }
-    @media(max-width:680px){.partner-filters,.partner-row,.guest-form{grid-template-columns:1fr}.pager{align-items:stretch;flex-direction:column}.file-item{align-items:flex-start;flex-direction:column}.guest-import-actions button{width:100%}}
+    @media(max-width:680px){main{padding:28px 16px 48px}.partner-filters,.partner-row,.guest-form,.attendance-toolbar{grid-template-columns:1fr}.pager{align-items:stretch;flex-direction:column}.file-item{align-items:flex-start;flex-direction:column}.guest-import-actions button{width:100%}.attendance-module summary{padding:14px}.attendance-body{padding:0 12px 14px}.attendance-filters{grid-template-columns:repeat(3,minmax(0,1fr))}.attendance-filters button{padding:8px 5px}.attendance-row{min-height:66px;padding:11px 10px}}
   </style>
 </head>
 <body>
@@ -71,6 +96,24 @@
       </header>
       <section class="details" id="details"></section>
     </article>
+    <details class="attendance-module" id="attendance-module" hidden>
+      <summary>
+        <span class="attendance-summary"><strong>Afkryds deltagere</strong></span>
+        <span class="attendance-count" id="attendance-count">Henter...</span>
+      </summary>
+      <div class="attendance-body">
+        <div class="attendance-toolbar">
+          <label>Søg<input id="attendance-search" type="search" placeholder="Navn, firma eller e-mail"></label>
+          <div class="attendance-filters" aria-label="Filtrer fremmøde">
+            <button type="button" data-attendance-filter="all" aria-pressed="true">Alle</button>
+            <button type="button" data-attendance-filter="absent" aria-pressed="false">Ikke mødt</button>
+            <button type="button" data-attendance-filter="attended" aria-pressed="false">Mødt</button>
+          </div>
+        </div>
+        <p class="attendance-notice" id="attendance-notice" aria-live="polite"></p>
+        <div class="attendance-list" id="attendance-list"><div class="empty">Henter deltagere...</div></div>
+      </div>
+    </details>
     <section class="file-module" id="file-module" hidden>
       <h2>Filer</h2>
       <div class="file-list" id="file-list"></div>
@@ -123,7 +166,7 @@
       guests:'<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"/><path d="M5.5 21a6.5 6.5 0 0 1 13 0"/></svg>'
     };
     var labels = { program:"Program", location:"Lokation", guests:"G\u00e6ster" };
-    var id = new URLSearchParams(location.search).get("id"), currentMeeting = null, partnerPage = 1, partnerTotal = 0, partnerPageSize = 8, pendingGuests = [];
+    var id = new URLSearchParams(location.search).get("id"), currentMeeting = null, partnerPage = 1, partnerTotal = 0, partnerPageSize = 8, pendingGuests = [], attendanceRows = [], attendanceFilter = "all";
     function bytes(n){n=Number(n||0);if(n<1024)return n+" B";if(n<1048576)return Math.round(n/1024)+" KB";return(Math.round(n/104857.6)/10)+" MB"}
     function partnerParameters() {
       var data = Object.fromEntries(new FormData(document.getElementById("partner-filters")));
@@ -243,6 +286,66 @@
         document.getElementById("guest-list").innerHTML = '<p class="portal-meta">Log ind for at tilføje eller se gæster.</p>';
       }
     }
+    function attendanceMatches(row) {
+      var search = document.getElementById("attendance-search").value.trim().toLowerCase();
+      var text = [row.name,row.company,row.email].join(" ").toLowerCase();
+      if (search && !text.includes(search)) return false;
+      if (attendanceFilter === "attended") return row.attended;
+      if (attendanceFilter === "absent") return !row.attended;
+      return true;
+    }
+    function renderAttendance() {
+      var attended = attendanceRows.filter(function(row) { return row.attended; }).length;
+      document.getElementById("attendance-count").textContent = attended + " af " + attendanceRows.length + " mødt";
+      document.querySelectorAll("[data-attendance-filter]").forEach(function(button) {
+        button.setAttribute("aria-pressed", String(button.dataset.attendanceFilter === attendanceFilter));
+      });
+      var visible = attendanceRows.filter(attendanceMatches);
+      document.getElementById("attendance-list").innerHTML = visible.length ? visible.map(function(row) {
+        var details = [row.company,row.email].filter(Boolean).map(PortalData.escape).join(" · ");
+        var badges = '<span class="attendance-badge">'+(row.attendeeType === "guest" ? "Gæst" : "Partner")+'</span>';
+        if (row.approvalStatus === "pending") badges += '<span class="attendance-badge pending">Afventer</span>';
+        return '<label class="attendance-row'+(row.attended?' is-attended':'')+'"><input type="checkbox" data-attendee-type="'+PortalData.escape(row.attendeeType)+'" data-attendee-id="'+PortalData.escape(row.attendeeId)+'" '+(row.attended?'checked':'')+'><span class="attendance-person"><strong>'+PortalData.escape(row.name)+'</strong><small>'+details+'</small><span class="attendance-badges">'+badges+'</span></span></label>';
+      }).join("") : '<div class="empty">Ingen deltagere matcher filteret.</div>';
+      document.querySelectorAll("#attendance-list input[type=checkbox]").forEach(function(checkbox) {
+        checkbox.onchange = async function() {
+          var desired = checkbox.checked;
+          var row = attendanceRows.find(function(item) { return item.attendeeType === checkbox.dataset.attendeeType && String(item.attendeeId) === String(checkbox.dataset.attendeeId); });
+          if (!row) return;
+          checkbox.disabled = true;
+          document.getElementById("attendance-notice").textContent = "Gemmer...";
+          try {
+            var result = await PortalData.saveMeetingAttendance({meetingId:currentMeeting.id,attendeeType:row.attendeeType,attendeeId:row.attendeeId,attended:desired});
+            row.attended = result.attended;
+            row.attendedAt = result.attendedAt;
+            document.getElementById("attendance-notice").textContent = "Fremmøde gemt.";
+            renderAttendance();
+          } catch (error) {
+            document.getElementById("attendance-notice").textContent = error.message;
+            renderAttendance();
+          }
+        };
+      });
+    }
+    async function loadAttendance() {
+      var list = document.getElementById("attendance-list");
+      try {
+        var data = await PortalData.meetingAttendance(currentMeeting.id);
+        attendanceRows = data.attendees || [];
+        renderAttendance();
+      } catch (error) {
+        document.getElementById("attendance-count").textContent = "Kunne ikke hente";
+        list.innerHTML = '<div class="empty">'+PortalData.escape(error.message)+'</div>';
+      }
+    }
+    async function configureAttendance() {
+      try {
+        var session = await PortalData.session();
+        if (session.role !== "admin") return;
+        document.getElementById("attendance-module").hidden = false;
+        loadAttendance();
+      } catch (error) {}
+    }
     PortalData.meetings().then(function (meetings) { return meetings.find(function (meeting) { return meeting.id === id || meeting.slug === id; }); }).then(function (meeting) {
       if (!meeting) throw new Error("Meeting not found.");
       currentMeeting = meeting;
@@ -257,12 +360,15 @@
       loadFiles();
       loadGuests();
       loadPartners();
+      configureAttendance();
     }).catch(function () {
       document.getElementById("title").textContent = "M\u00f8det kunne ikke hentes";
     });
     document.getElementById("partner-filters").onsubmit = function (event) { event.preventDefault(); partnerPage = 1; loadPartners(); };
     document.getElementById("partner-prev").onclick = function () { if (partnerPage > 1) { partnerPage--; loadPartners(); } };
     document.getElementById("partner-next").onclick = function () { if (partnerPage * partnerPageSize < partnerTotal) { partnerPage++; loadPartners(); } };
+    document.getElementById("attendance-search").oninput = renderAttendance;
+    document.querySelectorAll("[data-attendance-filter]").forEach(function(button) { button.onclick = function() { attendanceFilter = button.dataset.attendanceFilter; renderAttendance(); }; });
     document.getElementById("guest-form").onsubmit = async function (event) {
       event.preventDefault();
       var form = event.currentTarget;
