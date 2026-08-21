@@ -520,6 +520,11 @@ if ($method === 'GET' && $action === 'admin-meeting-attendance') {
          ) p ON TRUE
          WHERE mr.meeting_id = :user_meeting_id
            AND (mr.response = 'attending' OR mr.attended_at IS NOT NULL)
+           AND NOT EXISTS (
+               SELECT 1 FROM meeting_guests self_guest
+               WHERE self_guest.meeting_id = mr.meeting_id
+                 AND self_guest.registered_user_id = mr.user_id
+           )
          UNION ALL
          SELECT 'guest' AS \"attendeeType\", mg.id::text AS \"attendeeId\",
                 mg.name, mg.company, mg.email, NULL AS \"approvalStatus\",

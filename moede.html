@@ -56,6 +56,16 @@
     .attendance-badge { padding:3px 6px; border-radius:999px; background:#edf1f5; color:var(--muted); font-size:11px; font-weight:bold; }
     .attendance-badge.pending { background:#fff4d6; color:#775a00; }
     .attendance-notice { min-height:20px; margin:0 0 8px; color:var(--muted); font-size:13px; }
+    .self-guest-action { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:center; padding-bottom:18px; border-bottom:1px solid var(--line); }
+    .self-guest-action strong { display:block; margin-bottom:4px; color:var(--navy); font-size:16px; }
+    .self-guest-action p { font-size:14px; }
+    .self-guest-button { min-width:180px; }
+    .self-guest-button:disabled { border-color:#91a3b5; background:#edf1f5; color:#526273; cursor:default; }
+    .self-guest-notice { min-height:20px; margin:8px 0 0; color:var(--muted); font-size:13px; }
+    .self-guest-notice a { font-weight:bold; }
+    .guest-management { padding-top:18px; }
+    .guest-heading { margin:0 0 5px; color:var(--navy); font-size:16px; }
+    .guest-list-heading { margin-top:20px; }
     .guest-form { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; align-items:end; margin-top:12px; }
     .guest-form label:first-child { grid-column:1 / -1; }
     .guest-import { margin-top:18px; border-top:1px solid var(--line); }
@@ -90,7 +100,7 @@
     .pager-buttons { display:flex; gap:8px; }
     .secondary { border-color:var(--line); background:#fff; color:var(--navy); }
     .empty { padding:20px; color:var(--muted); text-align:center; }
-    @media(max-width:680px){main{padding:28px 16px 48px}.partner-filters,.partner-row,.guest-form,.attendance-toolbar{grid-template-columns:1fr}.pager{align-items:stretch;flex-direction:column}.file-item{align-items:flex-start;flex-direction:column}.guest-import-actions button{width:100%}.collapsible-module>summary{padding:14px}.module-body{padding:16px 14px 18px}.attendance-body{padding-top:0}.attendance-filters{grid-template-columns:repeat(3,minmax(0,1fr))}.attendance-filters button{padding:8px 5px}.attendance-row{min-height:66px;padding:11px 10px}}
+    @media(max-width:680px){main{padding:28px 16px 48px}.partner-filters,.partner-row,.guest-form,.attendance-toolbar,.self-guest-action{grid-template-columns:1fr}.self-guest-button{width:100%;min-width:0}.pager{align-items:stretch;flex-direction:column}.file-item{align-items:flex-start;flex-direction:column}.guest-import-actions button{width:100%}.collapsible-module>summary{padding:14px}.module-body{padding:16px 14px 18px}.attendance-body{padding-top:0}.attendance-filters{grid-template-columns:repeat(3,minmax(0,1fr))}.attendance-filters button{padding:8px 5px}.attendance-row{min-height:66px;padding:11px 10px}}
   </style>
 </head>
 <body>
@@ -129,29 +139,44 @@
       </div>
     </details>
     <details class="collapsible-module guest-module" id="guest-module" hidden>
-      <summary><span class="module-summary"><strong>Tilføj gæst</strong></span></summary>
+      <summary><span class="module-summary"><strong>Gæster</strong></span></summary>
       <div class="module-body">
-        <p>Registrer gæster til mødet med navn, firmanavn og e-mail.</p>
-        <form class="guest-form" id="guest-form">
-          <label>Navn<input name="name" required></label>
-          <label>Firmanavn<input name="company" required></label>
-          <label>E-mail<input name="email" type="email" required></label>
-          <button>Tilføj gæst</button>
-        </form>
-        <details class="guest-import" id="guest-import-module" hidden>
-          <summary><span class="guest-import-summary">Importér fra CSV eller Excel</span></summary>
-          <div class="guest-import-body">
-            <p>Filen skal have kolonnerne navn, firmanavn og email.</p>
-            <label>Fil<input id="guest-file" type="file" accept=".csv,.xlsx,.xls"></label>
-            <div class="guest-import-actions">
-              <button type="button" class="secondary" id="guest-read">Læs fil</button>
-              <button type="button" id="guest-import" disabled>Importér gæster</button>
-            </div>
-            <div class="guest-preview" id="guest-preview" hidden></div>
+        <div class="self-guest-action">
+          <div>
+            <strong>Deltager du selv som gæst?</strong>
+            <p id="self-guest-profile">Vi bruger oplysningerne fra din profil.</p>
           </div>
-        </details>
-        <p class="portal-meta" id="guest-notice"></p>
-        <div class="guest-list" id="guest-list"></div>
+          <button class="self-guest-button" id="self-guest-button" type="button">Tilføj mig som gæst</button>
+        </div>
+        <p class="self-guest-notice" id="self-guest-notice" role="status"></p>
+
+        <div class="guest-management" id="guest-management" hidden>
+          <h3 class="guest-heading">Tilføj en anden gæst</h3>
+          <p>Registrer gæsten med navn, firmanavn og e-mail.</p>
+          <form class="guest-form" id="guest-form">
+            <label>Navn<input name="name" required></label>
+            <label>Firmanavn<input name="company" required></label>
+            <label>E-mail<input name="email" type="email" required></label>
+            <button>Tilføj gæst</button>
+          </form>
+          <details class="guest-import" id="guest-import-module" hidden>
+            <summary><span class="guest-import-summary">Importér fra CSV eller Excel</span></summary>
+            <div class="guest-import-body">
+              <p>Filen skal have kolonnerne navn, firmanavn og email.</p>
+              <label>Fil<input id="guest-file" type="file" accept=".csv,.xlsx,.xls"></label>
+              <div class="guest-import-actions">
+                <button type="button" class="secondary" id="guest-read">Læs fil</button>
+                <button type="button" id="guest-import" disabled>Importér gæster</button>
+              </div>
+              <div class="guest-preview" id="guest-preview" hidden></div>
+            </div>
+          </details>
+          <p class="portal-meta" id="guest-notice"></p>
+          <section id="guest-list-section" hidden>
+            <h3 class="guest-heading guest-list-heading">Gæsteliste</h3>
+            <div class="guest-list" id="guest-list"></div>
+          </section>
+        </div>
       </div>
     </details>
     <details class="collapsible-module partner-module" id="partner-module" hidden>
@@ -173,7 +198,7 @@
       </div>
     </details>
   </main>
-  <script src="xlsx.full.min.js"></script><script src="portal-data.js?v=20260811-02"></script><script src="portal-header.js?v=20260811-04"></script>
+  <script src="xlsx.full.min.js"></script><script src="portal-data.js?v=20260821-01"></script><script src="portal-header.js?v=20260811-04"></script>
   <script>
     var icons = {
       partners:'<svg class="icon" viewBox="0 0 24 24"><path d="M16 20v-1.5a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4V20"/><circle cx="9" cy="7" r="3"/><path d="M22 20v-1.5a4 4 0 0 0-3-3.85M16 4.15a3 3 0 0 1 0 5.7"/></svg>',
@@ -182,7 +207,7 @@
       guests:'<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="7" r="4"/><path d="M5.5 21a6.5 6.5 0 0 1 13 0"/></svg>'
     };
     var labels = { program:"Program", location:"Lokation", guests:"G\u00e6ster" };
-    var id = new URLSearchParams(location.search).get("id"), currentMeeting = null, currentSession = null, partnerPage = 1, partnerTotal = 0, partnerPageSize = 8, pendingGuests = [], attendanceRows = [], attendanceFilter = "all";
+    var id = new URLSearchParams(location.search).get("id"), currentMeeting = null, currentSession = null, canManageGuests = false, partnerPage = 1, partnerTotal = 0, partnerPageSize = 8, pendingGuests = [], attendanceRows = [], attendanceFilter = "all";
     function bytes(n){n=Number(n||0);if(n<1024)return n+" B";if(n<1048576)return Math.round(n/1024)+" KB";return(Math.round(n/104857.6)/10)+" MB"}
     function partnerParameters() {
       var data = Object.fromEntries(new FormData(document.getElementById("partner-filters")));
@@ -303,6 +328,37 @@
         document.getElementById("guest-list").innerHTML = '<p class="portal-meta">Gæsterne kunne ikke hentes.</p>';
       }
     }
+    function renderSelfGuest(status) {
+      var button = document.getElementById("self-guest-button");
+      var profile = document.getElementById("self-guest-profile");
+      var notice = document.getElementById("self-guest-notice");
+      var details = [status.name,status.company,status.email].filter(Boolean);
+      profile.textContent = details.length ? details.join(" · ") : "Vi bruger oplysningerne fra din profil.";
+      button.disabled = status.registered || !status.profileComplete;
+      button.textContent = status.registered ? "Du er tilmeldt som gæst" : "Tilføj mig som gæst";
+      if (status.registered) {
+        notice.textContent = "Du står nu på mødets gæsteliste.";
+      } else if (!status.profileComplete) {
+        notice.innerHTML = 'Udfyld navn og virksomhed under <a href="min-profil.html">Min profil</a>, før du tilmelder dig.';
+      } else {
+        notice.textContent = "";
+      }
+      canManageGuests = Boolean(status.canManageGuests);
+      document.getElementById("guest-management").hidden = false;
+      document.getElementById("guest-list-section").hidden = !canManageGuests;
+    }
+    async function loadSelfGuest() {
+      var notice = document.getElementById("self-guest-notice");
+      try {
+        var status = await PortalData.meetingSelfGuest(currentMeeting.id || currentMeeting.slug);
+        renderSelfGuest(status);
+        if (canManageGuests) loadGuests();
+        return status;
+      } catch (error) {
+        notice.textContent = error.message;
+        throw error;
+      }
+    }
     async function configureGuests() {
       try {
         var session = await PortalData.session();
@@ -310,7 +366,7 @@
         currentSession = session;
         document.getElementById("guest-module").hidden = false;
         document.getElementById("guest-import-module").hidden = session.role !== "admin";
-        loadGuests();
+        await loadSelfGuest();
       } catch (error) {}
     }
     function attendanceMatches(row) {
@@ -370,6 +426,7 @@
         attendanceRows = attendanceRows.filter(function(item) { return !(item.attendeeType === "guest" && String(item.attendeeId) === String(guestId)); });
         renderAttendance();
         loadGuests();
+        loadSelfGuest().catch(function() {});
         notice.textContent = "Gæsten er fjernet fra mødet.";
       } catch (error) {
         button.disabled = false;
@@ -424,6 +481,20 @@
     document.getElementById("partner-next").onclick = function () { if (partnerPage * partnerPageSize < partnerTotal) { partnerPage++; loadPartners(); } };
     document.getElementById("attendance-search").oninput = renderAttendance;
     document.querySelectorAll("[data-attendance-filter]").forEach(function(button) { button.onclick = function() { attendanceFilter = button.dataset.attendanceFilter; renderAttendance(); }; });
+    document.getElementById("self-guest-button").onclick = async function () {
+      var button = this;
+      var notice = document.getElementById("self-guest-notice");
+      button.disabled = true;
+      notice.textContent = "Tilmelder...";
+      try {
+        await PortalData.registerSelfAsGuest(currentMeeting.id || currentMeeting.slug);
+        await loadSelfGuest();
+        if (currentSession && currentSession.role === "admin") loadAttendance();
+      } catch (error) {
+        button.disabled = false;
+        notice.textContent = error.message;
+      }
+    };
     document.getElementById("guest-form").onsubmit = async function (event) {
       event.preventDefault();
       var form = event.currentTarget;

@@ -104,7 +104,7 @@ function attachProfilePictureUrls(array &$partners): void
 function meetingByKey(PDO $pdo, string $meetingKey): ?array
 {
     $meeting = $pdo->prepare(
-        'SELECT id, id::text AS "idText", slug, title,
+        'SELECT id, id::text AS "idText", slug, title, status,
                 (SELECT COUNT(*) FROM meeting_groups mg WHERE mg.meeting_id = meetings.id)::int AS "groupCount"
          FROM meetings
          WHERE (:numeric_id > 0 AND id = :numeric_id) OR slug = :slug'
@@ -114,9 +114,28 @@ function meetingByKey(PDO $pdo, string $meetingKey): ?array
     return $meeting->fetch() ?: null;
 }
 
-function requireMeetingAccess(PDO $pdo, array $meeting, int $userId): void
+function selfGuestProfile(PDO $pdo, int $userId): ?array
 {
-    if (($_SESSION['role'] ?? null) === 'admin' || (int) $meeting['groupCount'] === 0) return;
+    $statement = $pdo->prepare(
+        'SELECT u.email, profile.name, profile.company
+         FROM users u
+         LEFT JOIN LATERAL (
+             SELECT candidate.name, candidate.company
+             FROM partners candidate
+             WHERE candidate.user_id = u.id
+                OR (candidate.user_id IS NULL AND LOWER(TRIM(candidate.email)) = LOWER(TRIM(u.email)))
+             ORDER BY candidate.user_id NULLS LAST, candidate.id
+             LIMIT 1
+         ) profile ON TRUE
+         WHERE u.id = :user_id'
+    );
+    $statement->execute(['user_id' => $userId]);
+    return $statement->fetch() ?: null;
+}
+
+function hasMeetingAccess(PDO $pdo, array $meeting, int $userId): bool
+{
+    if (($_SESSION['role'] ?? null) === 'admin' || (int) $meeting['groupCount'] === 0) return true;
     $access = $pdo->prepare(
         'SELECT 1
          FROM meeting_groups mg
@@ -124,7 +143,14 @@ function requireMeetingAccess(PDO $pdo, array $meeting, int $userId): void
          WHERE mg.meeting_id = :meeting_id AND gm.user_id = :user_id'
     );
     $access->execute(['meeting_id' => (int) $meeting['id'], 'user_id' => $userId]);
-    if (!$access->fetchColumn()) respond(['error' => 'Du har ikke adgang til dette møde.'], 403);
+    return (bool) $access->fetchColumn();
+}
+
+function requireMeetingAccess(PDO $pdo, array $meeting, int $userId): void
+{
+    if (!hasMeetingAccess($pdo, $meeting, $userId)) {
+        respond(['error' => 'Du har ikke adgang til dette møde.'], 403);
+    }
 }
 
 if ($method === 'POST' && $action === 'login') {
@@ -658,22 +684,34 @@ if ($method === 'GET' && $action === 'meeting-partners') {
             $params['label_id'] = $labelId;
         }
         $whereSql = $where ? ' AND ' . implode(' AND ', $where) : '';
+        $meetingPartnerSql =
+            '(
+                EXISTS (
+                    SELECT 1
+                    FROM group_members eligible_member
+                    JOIN meeting_groups eligible_group ON eligible_group.group_id = eligible_member.group_id
+                    WHERE eligible_group.meeting_id = :meeting_id
+                      AND eligible_member.user_id = profile_owner.id
+                )
+                OR EXISTS (
+                    SELECT 1
+                    FROM meeting_guests self_guest
+                    WHERE self_guest.meeting_id = :meeting_id
+                      AND self_guest.registered_user_id = profile_owner.id
+                )
+            )';
         $baseSql =
             ' FROM partners p
               JOIN users profile_owner ON profile_owner.id = p.user_id
                 OR (p.user_id IS NULL AND LOWER(TRIM(profile_owner.email)) = LOWER(TRIM(p.email)))
-              JOIN group_members gm ON gm.user_id = profile_owner.id
-              JOIN meeting_groups mg ON mg.group_id = gm.group_id
-              WHERE mg.meeting_id = :meeting_id' . $whereSql;
+              WHERE ' . $meetingPartnerSql . $whereSql;
         $listSql =
             ' FROM partners p
               JOIN users profile_owner ON profile_owner.id = p.user_id
                 OR (p.user_id IS NULL AND LOWER(TRIM(profile_owner.email)) = LOWER(TRIM(p.email)))
-              JOIN group_members gm ON gm.user_id = profile_owner.id
-              JOIN meeting_groups mg ON mg.group_id = gm.group_id
               LEFT JOIN partner_profile_labels ppl ON ppl.partner_id = p.id
               LEFT JOIN partner_labels l ON l.id = ppl.label_id
-              WHERE mg.meeting_id = :meeting_id' . $whereSql;
+              WHERE ' . $meetingPartnerSql . $whereSql;
         $count = $pdo->prepare('SELECT COUNT(DISTINCT p.id)::int' . $baseSql);
         foreach ($params as $key => $value) {
             $count->bindValue(':' . $key, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
@@ -703,9 +741,21 @@ if ($method === 'GET' && $action === 'meeting-partners') {
              JOIN partners p ON p.id = ppl.partner_id
              JOIN users profile_owner ON profile_owner.id = p.user_id
                OR (p.user_id IS NULL AND LOWER(TRIM(profile_owner.email)) = LOWER(TRIM(p.email)))
-             JOIN group_members gm ON gm.user_id = profile_owner.id
-             JOIN meeting_groups mg ON mg.group_id = gm.group_id
-             WHERE mg.meeting_id = :meeting_id
+             WHERE (
+                 EXISTS (
+                     SELECT 1
+                     FROM group_members eligible_member
+                     JOIN meeting_groups eligible_group ON eligible_group.group_id = eligible_member.group_id
+                     WHERE eligible_group.meeting_id = :meeting_id
+                       AND eligible_member.user_id = profile_owner.id
+                 )
+                 OR EXISTS (
+                     SELECT 1
+                     FROM meeting_guests self_guest
+                     WHERE self_guest.meeting_id = :meeting_id
+                       AND self_guest.registered_user_id = profile_owner.id
+                 )
+             )
              ORDER BY l.name'
         );
         $labels->execute(['meeting_id' => (int) $meeting['id']]);
@@ -720,19 +770,206 @@ if ($method === 'GET' && $action === 'meeting-partners') {
             'pageSize' => $pageSize,
         ]);
     }
+
+    $profileWhere = [];
+    $profileParams = ['meeting_id' => (int) $meeting['id']];
+    if ($search !== '') {
+        $profileWhere[] = '(LOWER(p.name) LIKE LOWER(:search)
+            OR LOWER(p.company) LIKE LOWER(:search)
+            OR LOWER(p.email) LIKE LOWER(:search)
+            OR EXISTS (
+                SELECT 1 FROM partner_profile_labels spl
+                JOIN partner_labels sl ON sl.id = spl.label_id
+                WHERE spl.partner_id = p.id AND LOWER(sl.name) LIKE LOWER(:search)
+            ))';
+        $profileParams['search'] = '%' . $search . '%';
+    }
+    if ($labelId > 0) {
+        $profileWhere[] = 'EXISTS (
+            SELECT 1 FROM partner_profile_labels fpl
+            WHERE fpl.partner_id = p.id AND fpl.label_id = :label_id
+        )';
+        $profileParams['label_id'] = $labelId;
+    }
+    $profileWhereSql = $profileWhere ? ' AND ' . implode(' AND ', $profileWhere) : '';
+    $selfProfiles = $pdo->prepare(
+        'SELECT p.id::text, p.slug, p.name, p.company, p.email,
+                p.linkedin_url AS "linkedin", p.company_url AS "companyUrl",
+                p.profile_picture_stored_name AS "profilePictureStoredName",
+                COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels
+         FROM partners p
+         JOIN users profile_owner ON profile_owner.id = p.user_id
+           OR (p.user_id IS NULL AND LOWER(TRIM(profile_owner.email)) = LOWER(TRIM(p.email)))
+         LEFT JOIN partner_profile_labels ppl ON ppl.partner_id = p.id
+         LEFT JOIN partner_labels l ON l.id = ppl.label_id
+         WHERE EXISTS (
+             SELECT 1
+             FROM meeting_guests self_guest
+             WHERE self_guest.meeting_id = :meeting_id
+               AND self_guest.registered_user_id = profile_owner.id
+         )' . $profileWhereSql . '
+         GROUP BY p.id
+         ORDER BY p.name'
+    );
+    foreach ($profileParams as $key => $value) {
+        $selfProfiles->bindValue(':' . $key, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
+    }
+    $selfProfiles->execute();
+    $profileRows = $selfProfiles->fetchAll();
+    attachProfilePictureUrls($profileRows);
+
     $manual = array_map(fn($name) => ['name' => $name, 'unmatched' => true], manualPartnerNames($meeting['manualPartners'] ?? null));
     if ($search !== '') {
         $manual = array_values(array_filter($manual, fn($row) => stripos($row['name'], $search) !== false));
     }
-    $total = count($manual);
+    if ($labelId > 0) $manual = [];
+    $combined = array_merge($profileRows, $manual);
+    usort($combined, fn($left, $right) => strcasecmp((string) $left['name'], (string) $right['name']));
+
+    $labels = $pdo->prepare(
+        'SELECT DISTINCT l.id::text, l.name
+         FROM partner_labels l
+         JOIN partner_profile_labels ppl ON ppl.label_id = l.id
+         JOIN partners p ON p.id = ppl.partner_id
+         JOIN users profile_owner ON profile_owner.id = p.user_id
+           OR (p.user_id IS NULL AND LOWER(TRIM(profile_owner.email)) = LOWER(TRIM(p.email)))
+         WHERE EXISTS (
+             SELECT 1
+             FROM meeting_guests self_guest
+             WHERE self_guest.meeting_id = :meeting_id
+               AND self_guest.registered_user_id = profile_owner.id
+         )
+         ORDER BY l.name'
+    );
+    $labels->execute(['meeting_id' => (int) $meeting['id']]);
+    $total = count($combined);
     respond([
-        'source' => 'manual',
-        'partners' => array_slice($manual, $offset, $pageSize),
-        'labels' => [],
+        'source' => 'manual-and-guests',
+        'partners' => array_slice($combined, $offset, $pageSize),
+        'labels' => $labels->fetchAll(),
         'total' => $total,
         'page' => $page,
         'pageSize' => $pageSize,
     ]);
+}
+
+if ($method === 'GET' && $action === 'meeting-self-guest') {
+    requireLogin();
+    $meetingKey = trim((string) ($_GET['id'] ?? ''));
+    if ($meetingKey === '') respond(['error' => 'Møde er påkrævet.'], 422);
+    $meeting = meetingByKey($pdo, $meetingKey);
+    if (!$meeting) respond(['error' => 'Mødet findes ikke.'], 404);
+
+    $registration = $pdo->prepare(
+        'SELECT id::text AS "guestId"
+         FROM meeting_guests
+         WHERE meeting_id = :meeting_id AND registered_user_id = :user_id'
+    );
+    $registration->execute(['meeting_id' => (int) $meeting['id'], 'user_id' => $userId]);
+    $registered = $registration->fetch();
+    $profile = selfGuestProfile($pdo, $userId);
+    $name = trim((string) ($profile['name'] ?? ''));
+    $company = trim((string) ($profile['company'] ?? ''));
+
+    respond(['selfRegistration' => [
+        'registered' => (bool) $registered,
+        'guestId' => $registered['guestId'] ?? null,
+        'profileComplete' => $name !== '' && $company !== '',
+        'canManageGuests' => hasMeetingAccess($pdo, $meeting, $userId),
+        'name' => $name,
+        'company' => $company,
+        'email' => (string) ($profile['email'] ?? ''),
+    ]]);
+}
+
+if ($method === 'POST' && $action === 'meeting-self-guest') {
+    requireLogin();
+    $body = requestBody();
+    required($body, ['meetingId']);
+    $meeting = meetingByKey($pdo, trim((string) $body['meetingId']));
+    if (!$meeting) respond(['error' => 'Mødet findes ikke.'], 404);
+    if ($meeting['status'] === 'cancelled') respond(['error' => 'Du kan ikke tilmelde dig et aflyst møde.'], 422);
+
+    $profile = selfGuestProfile($pdo, $userId);
+    $name = trim((string) ($profile['name'] ?? ''));
+    $company = trim((string) ($profile['company'] ?? ''));
+    $email = strtolower(trim((string) ($profile['email'] ?? '')));
+    if ($name === '' || $company === '') {
+        respond(['error' => 'Udfyld navn og virksomhed på din profil, før du tilmelder dig.'], 422);
+    }
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        respond(['error' => 'Din profil har ikke en gyldig e-mailadresse.'], 422);
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $existing = $pdo->prepare(
+            'SELECT id FROM meeting_guests
+             WHERE meeting_id = :meeting_id AND registered_user_id = :user_id
+             FOR UPDATE'
+        );
+        $existing->execute(['meeting_id' => (int) $meeting['id'], 'user_id' => $userId]);
+        $guestId = $existing->fetchColumn();
+
+        if (!$guestId) {
+            $matchingGuest = $pdo->prepare(
+                'SELECT id FROM meeting_guests
+                 WHERE meeting_id = :meeting_id
+                   AND registered_user_id IS NULL
+                   AND LOWER(TRIM(email)) = LOWER(TRIM(:email))
+                 ORDER BY (added_by = :user_id) DESC, created_at, id
+                 LIMIT 1
+                 FOR UPDATE'
+            );
+            $matchingGuest->execute([
+                'meeting_id' => (int) $meeting['id'],
+                'email' => $email,
+                'user_id' => $userId,
+            ]);
+            $guestId = $matchingGuest->fetchColumn();
+        }
+
+        if ($guestId) {
+            $save = $pdo->prepare(
+                'UPDATE meeting_guests
+                 SET registered_user_id = :registered_user_id, name = :name, company = :company, email = :email
+                 WHERE id = :id
+                 RETURNING id::text, name, company, email, created_at AS "createdAt"'
+            );
+            $save->execute([
+                'registered_user_id' => $userId,
+                'name' => $name,
+                'company' => $company,
+                'email' => $email,
+                'id' => (int) $guestId,
+            ]);
+        } else {
+            $save = $pdo->prepare(
+                'INSERT INTO meeting_guests
+                    (meeting_id, added_by, registered_user_id, name, company, email)
+                 VALUES
+                    (:meeting_id, :added_by, :registered_user_id, :name, :company, :email)
+                 ON CONFLICT (meeting_id, registered_user_id)
+                    WHERE registered_user_id IS NOT NULL
+                 DO UPDATE SET name = EXCLUDED.name, company = EXCLUDED.company, email = EXCLUDED.email
+                 RETURNING id::text, name, company, email, created_at AS "createdAt"'
+            );
+            $save->execute([
+                'meeting_id' => (int) $meeting['id'],
+                'added_by' => $userId,
+                'registered_user_id' => $userId,
+                'name' => $name,
+                'company' => $company,
+                'email' => $email,
+            ]);
+        }
+        $guest = $save->fetch();
+        $pdo->commit();
+    } catch (Throwable $exception) {
+        $pdo->rollBack();
+        throw $exception;
+    }
+    respond(['registered' => true, 'guest' => $guest], 201);
 }
 
 if ($method === 'GET' && $action === 'meeting-guests') {
@@ -768,7 +1005,7 @@ if ($method === 'POST' && $action === 'meeting-guests') {
     required($body, ['meetingId', 'name', 'company', 'email']);
     $meeting = meetingByKey($pdo, trim((string) $body['meetingId']));
     if (!$meeting) respond(['error' => 'Mødet findes ikke.'], 404);
-    requireMeetingAccess($pdo, $meeting, $userId);
+    if ($meeting['status'] === 'cancelled') respond(['error' => 'Du kan ikke tilføje gæster til et aflyst møde.'], 422);
     $email = strtolower(trim((string) $body['email']));
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) respond(['error' => 'Gæstens e-mail er ikke gyldig.'], 422);
     $statement = $pdo->prepare(

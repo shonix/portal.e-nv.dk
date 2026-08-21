@@ -196,6 +196,7 @@ CREATE TABLE IF NOT EXISTS meeting_guests (
   id BIGSERIAL PRIMARY KEY,
   meeting_id BIGINT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
   added_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  registered_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
   name TEXT NOT NULL,
   company TEXT NOT NULL,
   email TEXT NOT NULL,
@@ -209,6 +210,7 @@ ALTER TABLE meeting_rsvps
   ADD COLUMN IF NOT EXISTS attendance_marked_by BIGINT REFERENCES users(id) ON DELETE SET NULL;
 
 ALTER TABLE meeting_guests
+  ADD COLUMN IF NOT EXISTS registered_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
   ADD COLUMN IF NOT EXISTS attended_at TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS attendance_marked_by BIGINT REFERENCES users(id) ON DELETE SET NULL;
 
@@ -218,4 +220,7 @@ CREATE INDEX IF NOT EXISTS meeting_attachments_meeting_idx ON meeting_attachment
 CREATE INDEX IF NOT EXISTS partner_materials_created_idx ON partner_materials (created_at DESC);
 CREATE INDEX IF NOT EXISTS meeting_guests_meeting_idx ON meeting_guests (meeting_id);
 CREATE INDEX IF NOT EXISTS meeting_guests_added_by_idx ON meeting_guests (added_by);
+CREATE UNIQUE INDEX IF NOT EXISTS meeting_guests_registered_user_uidx
+  ON meeting_guests (meeting_id, registered_user_id)
+  WHERE registered_user_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS partner_labels_name_lower_uidx ON partner_labels (LOWER(TRIM(name)));
