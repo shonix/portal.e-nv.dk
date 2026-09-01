@@ -166,7 +166,11 @@ if ($method === 'GET' && $action === 'admin-group-detail') {
          ORDER BY COALESCE(p.name, u.email)'
     );
     $members->execute(['group_id' => $groupId]);
-    respond(['group' => $group->fetch() ?: null, 'members' => $members->fetchAll()]);
+    respond([
+        'group' => $group->fetch() ?: null,
+        'members' => $members->fetchAll(),
+        'missingLabels' => missingGroupLabels($pdo, $groupId),
+    ]);
 }
 
 if ($method === 'GET' && $action === 'group-bulletins') {
