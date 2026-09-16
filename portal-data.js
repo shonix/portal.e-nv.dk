@@ -12,6 +12,7 @@
   window.PortalData = {
     session:function(){return request("session");}, login:function(email,password){return post("login",{email:email,password:password});},
     register:function(token,password){return post("register",{token:token,password:password});},
+    requestPasswordReset:function(email){return post("password-reset-request",{email:email});},
     passwordResetInfo:function(token){return request("password-reset-info",null,{token:token});},
     resetPassword:function(token,password){return post("password-reset",{token:token,password:password});},
     logout:function(){return post("logout",{});}, groups:async function(){return (await request("groups")).groups;},

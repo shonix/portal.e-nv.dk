@@ -151,7 +151,7 @@ the migrations that have not previously been applied, in numeric order:
 | 011 | Profile-picture metadata |
 | 012 | Meeting guests |
 | 013 | Group bulletin board |
-| 014 | Administrator-generated password-reset links |
+| 014 | Administrator-generated and self-service password-reset links |
 | 015 | Admin-only meeting attendance tracking |
 | 016 | Administrator-managed information banner |
 | 017 | Downloadable partner materials and upload metadata |
@@ -247,6 +247,7 @@ After deployment, verify at minimum:
 
 ```text
 GET https://portal.e-nv.dk/
+GET https://portal.e-nv.dk/glemt-adgangskode.html
 GET https://portal.e-nv.dk/api/index.php?action=session
 ```
 

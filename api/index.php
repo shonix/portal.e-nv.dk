@@ -231,6 +231,74 @@ if ($method === 'POST' && $action === 'register') {
     respond(['ok' => true, 'role' => $user['role']], 201);
 }
 
+if ($method === 'POST' && $action === 'password-reset-request') {
+    $startedAt = microtime(true);
+    $body = requestBody();
+    $email = strtolower(trim((string) ($body['email'] ?? '')));
+    $token = null;
+    $recipient = null;
+
+    if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $pdo->beginTransaction();
+        try {
+            $userStatement = $pdo->prepare('SELECT id, email FROM users WHERE email = :email FOR UPDATE');
+            $userStatement->execute(['email' => $email]);
+            $targetUser = $userStatement->fetch();
+
+            if ($targetUser) {
+                $limitStatement = $pdo->prepare(
+                    "SELECT COUNT(*)::int AS hourly_count,
+                            COALESCE(EXTRACT(EPOCH FROM (NOW() - MAX(created_at))), 999999)::int AS seconds_since_latest
+                     FROM password_reset_tokens
+                     WHERE user_id = :user_id AND created_at > NOW() - INTERVAL '1 hour'"
+                );
+                $limitStatement->execute(['user_id' => (int) $targetUser['id']]);
+                $limits = $limitStatement->fetch();
+                $allowed = (int) ($limits['hourly_count'] ?? 0) < 5
+                    && (int) ($limits['seconds_since_latest'] ?? 999999) >= 120;
+
+                if ($allowed) {
+                    $token = bin2hex(random_bytes(32));
+                    $statement = $pdo->prepare(
+                        "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+                         VALUES (:user_id, :token_hash, NOW() + INTERVAL '1 hour')"
+                    );
+                    $statement->execute([
+                        'user_id' => (int) $targetUser['id'],
+                        'token_hash' => hash('sha256', $token),
+                    ]);
+                    $recipient = (string) $targetUser['email'];
+                }
+            }
+            $pdo->commit();
+        } catch (Throwable $error) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $error;
+        }
+    }
+
+    if ($token !== null && $recipient !== null) {
+        sendPortalMail(
+            $config,
+            $recipient,
+            'Nulstil din adgangskode til Partnerportalen',
+            "Hej\n\nVi har modtaget en anmodning om at nulstille din adgangskode til Partnerportalen.\n\n" .
+            "Vælg en ny adgangskode her:\n" . passwordResetUrl($token) .
+            "\n\nLinket udløber efter 60 minutter og kan kun bruges én gang. Hvis du ikke bad om et nyt link, " .
+            "kan du se bort fra denne e-mail; din adgangskode er ikke blevet ændret.\n\n" .
+            "Venlig hilsen\nEjendomsnetværket"
+        );
+    }
+
+    // Keep the public response similar for known and unknown addresses.
+    $remainingDelay = 1.0 - (microtime(true) - $startedAt);
+    if ($remainingDelay > 0) usleep((int) ($remainingDelay * 1000000));
+    respond([
+        'ok' => true,
+        'message' => 'Hvis der findes en konto med e-mailadressen, er der sendt et nulstillingslink.',
+    ]);
+}
+
 if ($method === 'GET' && $action === 'password-reset-info') {
     $token = trim((string) ($_GET['token'] ?? ''));
     if ($token === '') respond(['error' => 'Nulstillingslinket mangler.'], 422);
@@ -267,9 +335,10 @@ if ($method === 'POST' && $action === 'password-reset') {
         }
 
         // Keep the user-to-token lock order consistent with admin password changes.
-        $userStatement = $pdo->prepare('SELECT id FROM users WHERE id = :id FOR UPDATE');
+        $userStatement = $pdo->prepare('SELECT id, email FROM users WHERE id = :id FOR UPDATE');
         $userStatement->execute(['id' => (int) $reset['user_id']]);
-        if (!$userStatement->fetch()) {
+        $targetUser = $userStatement->fetch();
+        if (!$targetUser) {
             $pdo->rollBack();
             respond(['error' => 'Nulstillingslinket er ugyldigt, udløbet eller allerede brugt.'], 422);
         }
@@ -298,6 +367,14 @@ if ($method === 'POST' && $action === 'password-reset') {
         if ($pdo->inTransaction()) $pdo->rollBack();
         throw $error;
     }
+    sendPortalMail(
+        $config,
+        (string) $targetUser['email'],
+        'Din adgangskode til Partnerportalen er ændret',
+        "Hej\n\nDin adgangskode til Partnerportalen er blevet ændret.\n\n" .
+        "Hvis du ikke selv foretog ændringen, skal du kontakte Ejendomsnetværket på kontakt@e-nv.dk.\n\n" .
+        "Venlig hilsen\nEjendomsnetværket"
+    );
     respond(['ok' => true]);
 }
 

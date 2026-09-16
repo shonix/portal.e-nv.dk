@@ -16,6 +16,8 @@
     label { display:block; margin-top:14px; color:var(--muted); font-size:13px; font-weight:bold; }
     input { width:100%; margin-top:5px; padding:11px; border:1px solid var(--line); border-radius:5px; font:inherit; }
     button { width:100%; margin-top:18px; padding:11px; border:0; border-radius:5px; background:var(--green); color:#fff; cursor:pointer; font:inherit; font-weight:bold; }
+    .forgot-password { margin:10px 0 0; text-align:right; font-size:14px; }
+    .forgot-password a { color:var(--green); text-underline-offset:3px; }
     .error { display:none; color:#a12626; }
   </style>
 </head>
@@ -26,6 +28,7 @@
       <p>Log ind for at administrere Partnerportalen.</p>
       <label>E-mail<input name="email" type="email" required autocomplete="username"></label>
       <label>Adgangskode<input name="password" type="password" required autocomplete="current-password"></label>
+      <p class="forgot-password"><a href="glemt-adgangskode.html">Glemt din adgangskode?</a></p>
       <button type="submit">Log ind</button>
       <p class="error" id="error"></p>
     </form>
