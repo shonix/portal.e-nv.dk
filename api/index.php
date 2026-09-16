@@ -338,8 +338,8 @@ if ($method === 'POST' && $action === 'admin-invitations') {
     $invitation = $statement->fetch();
     $invitation['url'] = accountInvitationUrl($token);
     $from = (string) ($config['mail_from'] ?? 'noreply@e-nv.dk');
-    $subject = 'Invitation til Ejendomsnetværkets partnerportal';
-    $message = "Hej\n\nDu er blevet inviteret til Ejendomsnetværkets partnerportal.\n\nOpret din konto her:\n" .
+    $subject = 'Invitation til Partnerportalen';
+    $message = "Hej\n\nDu er blevet inviteret til Partnerportalen hos Ejendomsnetværket.\n\nOpret din konto her:\n" .
         $invitation['url'] .
         "\n\nLinket udløber efter 7 dage.\n\nVenlig hilsen\nEjendomsnetværket";
     $headers = [

@@ -64,7 +64,7 @@ function defaultPortalBannerSettings(): array
     return [
         'enabled' => true,
         'audience' => 'no_group',
-        'title' => 'Velkommen til Ejendomsnetværkets Partnerportal',
+        'title' => 'Velkommen til Partnerportalen',
         'message' => 'Når du har oprettet din brugerprofil, kan der gå op til 24 timer, før en administrator tilføjer dig til din gruppe.',
     ];
 }

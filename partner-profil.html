@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Partnerprofil | Partnerportal</title>
+  <title>Partnerprofil | Partnerportalen</title>
   <link rel="stylesheet" href="portal-header.css?v=20260717-01">
   <style>
     :root {
@@ -190,7 +190,7 @@
       return parameters.get("me") === "1" ? PortalData.myProfile() : PortalData.partnerDetail(id, groupId);
     }).then(function (partner) {
       if (!partner) throw new Error("Partner not found.");
-      document.title = partner.name + " | Partnerportal";
+      document.title = partner.name + " | Partnerportalen";
       var avatar = document.getElementById("avatar");
       if (partner.profileImageUrl) avatar.innerHTML = '<img src="' + PortalData.escape(partner.profileImageUrl) + '" alt="">';
       else avatar.textContent = partner.name.charAt(0);

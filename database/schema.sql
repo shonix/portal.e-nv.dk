@@ -73,7 +73,7 @@ INSERT INTO portal_settings (setting_key, setting_value)
 VALUES
   ('banner_enabled', 'true'),
   ('banner_audience', 'no_group'),
-  ('banner_title', 'Velkommen til Ejendomsnetværkets Partnerportal'),
+  ('banner_title', 'Velkommen til Partnerportalen'),
   ('banner_message', 'Når du har oprettet din brugerprofil, kan der gå op til 24 timer, før en administrator tilføjer dig til din gruppe.')
 ON CONFLICT (setting_key) DO NOTHING;
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Møde | Partnerportal</title>
+  <title>Møde | Partnerportalen</title>
   <link rel="stylesheet" href="portal-header.css?v=20260717-01">
   <style>
     :root { --navy:#15243a; --green:#163674; --line:#d6dde3; --muted:#5d6b80; --page:#f5f7f9; --surface:#fff; }
@@ -105,7 +105,7 @@
 </head>
 <body>
   <main>
-    <a href="index.html">&larr; Tilbage til partnerportalen</a>
+    <a href="index.html">&larr; Tilbage til Partnerportalen</a>
     <article class="card">
       <header class="cover">
         <h1 id="title"></h1>
@@ -456,7 +456,7 @@
     PortalData.meetings().then(function (meetings) { return meetings.find(function (meeting) { return meeting.id === id || meeting.slug === id; }); }).then(function (meeting) {
       if (!meeting) throw new Error("Meeting not found.");
       currentMeeting = meeting;
-      document.title = meeting.title + " | Partnerportal";
+      document.title = meeting.title + " | Partnerportalen";
       document.getElementById("title").textContent = meeting.title;
       document.getElementById("date").textContent = new Date(meeting.date + "T00:00:00").toLocaleDateString("da-DK", { day:"numeric", month:"long", year:"numeric" });
       document.getElementById("time").textContent = "kl. " + meeting.time;

@@ -1,4 +1,4 @@
-# Ejendomsnetværkets Partnerportal
+# Partnerportalen
 
 The partner portal is a small PHP and PostgreSQL application hosted at
 `https://portal.e-nv.dk`. The frontend consists of static HTML, CSS and
