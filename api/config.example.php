@@ -7,6 +7,13 @@ return [
     'password' => 'YOUR_DATABASE_PASSWORD',
     'portal_base_url' => 'https://portal.e-nv.dk',
     'mail_from' => 'noreply@e-nv.dk',
+    'mail' => [
+        'provider' => 'resend',
+        'api_key' => 'YOUR_RESEND_API_KEY',
+        'sender_address' => 'noreply@portal.e-nv.dk',
+        'sender_name' => 'Ejendomsnetværket',
+        'reply_to' => 'kontakt@e-nv.dk',
+    ],
     'meeting_attachment_dir' => __DIR__ . '/portal-private/meeting-attachments',
     'meeting_attachment_max_bytes' => 10485760,
     'partner_material_dir' => __DIR__ . '/portal-private/partner-materials',

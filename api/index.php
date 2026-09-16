@@ -337,18 +337,13 @@ if ($method === 'POST' && $action === 'admin-invitations') {
     ]);
     $invitation = $statement->fetch();
     $invitation['url'] = accountInvitationUrl($token);
-    $from = (string) ($config['mail_from'] ?? 'noreply@e-nv.dk');
     $subject = 'Invitation til Partnerportalen';
     $message = "Hej\n\nDu er blevet inviteret til Partnerportalen hos Ejendomsnetværket.\n\nOpret din konto her:\n" .
         $invitation['url'] .
         "\n\nLinket udløber efter 7 dage.\n\nVenlig hilsen\nEjendomsnetværket";
-    $headers = [
-        'From: Ejendomsnetværket <' . $from . '>',
-        'Reply-To: ' . $from,
-        'MIME-Version: 1.0',
-        'Content-Type: text/plain; charset=UTF-8',
-    ];
-    $invitation['emailSent'] = mail($email, $subject, $message, implode("\r\n", $headers));
+    $mailResult = sendPortalMail($config, $email, $subject, $message);
+    $invitation['emailSent'] = $mailResult['sent'];
+    $invitation['emailError'] = $mailResult['error'];
     respond(['invitation' => $invitation], 201);
 }
 
@@ -1427,10 +1422,22 @@ if ($method === 'POST' && $action === 'admin-password-reset-link') {
         if ($pdo->inTransaction()) $pdo->rollBack();
         throw $error;
     }
+    $resetUrl = passwordResetUrl($token);
+    $mailResult = sendPortalMail(
+        $config,
+        (string) $targetUser['email'],
+        'Nulstil din adgangskode til Partnerportalen',
+        "Hej\n\nDer er oprettet et link til at nulstille din adgangskode til Partnerportalen.\n\n" .
+        "Vælg en ny adgangskode her:\n" . $resetUrl .
+        "\n\nLinket udløber efter 60 minutter. Hvis du ikke forventede denne e-mail, kan du se bort fra den.\n\n" .
+        "Venlig hilsen\nEjendomsnetværket"
+    );
     respond([
-        'url' => passwordResetUrl($token),
+        'url' => $resetUrl,
         'expiresAt' => $reset['expiresAt'],
         'email' => $targetUser['email'],
+        'emailSent' => $mailResult['sent'],
+        'emailError' => $mailResult['error'],
     ], 201);
 }
 

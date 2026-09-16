@@ -11,14 +11,14 @@ committed as `xlsx.full.min.js`.
 
 - PHP 8.1 or newer
 - PostgreSQL
-- PHP extensions: PDO PostgreSQL, Fileinfo, GD image metadata support, Iconv
-  and ZipArchive
+- PHP extensions: cURL, PDO PostgreSQL, Fileinfo, GD image metadata support,
+  Iconv and ZipArchive
 - Apache with `mod_rewrite` and `mod_headers` for the production `.htaccess`
 - HTTPS in production
 
-ZipArchive is used to validate uploaded XLSX and DOCX files. PHP's `mail()`
-function is currently used for invitation messages, so actual mail delivery
-also depends on the hosting and domain mail configuration.
+ZipArchive is used to validate uploaded XLSX and DOCX files. Account invitations
+and password-reset messages can be sent through Resend or Microsoft Graph.
+Meeting invitations continue to use PHP's `mail()` function for now.
 
 ## Repository structure
 
@@ -88,6 +88,13 @@ return [
     'password' => 'DATABASE_PASSWORD',
     'portal_base_url' => 'https://portal.e-nv.dk',
     'mail_from' => 'noreply@e-nv.dk',
+    'mail' => [
+        'provider' => 'resend',
+        'api_key' => 'YOUR_RESEND_API_KEY',
+        'sender_address' => 'noreply@portal.e-nv.dk',
+        'sender_name' => 'Ejendomsnetværket',
+        'reply_to' => 'kontakt@e-nv.dk',
+    ],
     'meeting_attachment_dir' => __DIR__ . '/portal-private/meeting-attachments',
     'meeting_attachment_max_bytes' => 10485760,
     'partner_material_dir' => __DIR__ . '/portal-private/partner-materials',
@@ -105,7 +112,8 @@ Configuration fields:
 | `user` | Yes | PostgreSQL username. |
 | `password` | Yes | PostgreSQL password. |
 | `portal_base_url` | Yes | Public portal URL used when generating invitation and password-reset links. |
-| `mail_from` | For mail | Sender address passed to PHP `mail()`. This does not configure SMTP by itself. |
+| `mail_from` | For meeting mail | Sender address passed to PHP `mail()` for meeting invitations and used by the local fallback. |
+| `mail` | For transactional mail | Provider credentials, sender and reply-to settings for account invitations and password resets. Supported providers are `resend`, `microsoft_graph` and the local `php_mail` fallback. |
 | `meeting_attachment_dir` | Recommended | Private storage path for meeting attachments. |
 | `meeting_attachment_max_bytes` | No | Attachment limit in bytes; defaults to 10 MB. |
 | `partner_material_dir` | Recommended | Private storage path for downloadable partner materials. |

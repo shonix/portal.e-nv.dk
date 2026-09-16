@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/mail.php';
+
 header('Content-Type: application/json; charset=UTF-8');
 header('Cache-Control: no-store');
 ini_set('session.use_strict_mode', '1');

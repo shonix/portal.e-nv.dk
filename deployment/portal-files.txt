@@ -6,6 +6,7 @@ address-autocomplete.js
 api/bootstrap.php
 api/features.php
 api/index.php
+api/mail.php
 admin-banner.html
 admin-branchelabels.html
 admin-bruger.html

@@ -42,8 +42,8 @@
   </form>
   <section class="panel" id="reset-panel" hidden>
     <h2>Nulstil adgangskode</h2>
-    <p class="meta">Opret et personligt engangslink, som kan sendes manuelt til brugeren. Linket udløber efter 60 minutter.</p>
-    <button type="button" id="create-reset-link">Opret nulstillingslink</button>
+    <p class="meta">Opret og send et personligt engangslink til brugeren. Linket udløber efter 60 minutter.</p>
+    <button type="button" id="create-reset-link">Opret og send nulstillingslink</button>
     <div id="reset-result" hidden>
       <label>Nulstillingslink
         <span class="link-row"><input id="reset-url" readonly><button type="button" id="copy-reset-link">Kopier link</button></span>
@@ -65,7 +65,7 @@ PortalData.requireSession("admin").then(load);
 document.getElementById("add-user-group").onclick=function(){var select=document.getElementById("user-group");if(select.value&&!selectedUserGroupIds.includes(String(select.value))){selectedUserGroupIds.push(String(select.value));renderGroupPicker()}};
 form.onsubmit=async function(e){e.preventDefault();var d=Object.fromEntries(new FormData(form));d.userId=userId;d.groupIds=selectedUserGroupIds.slice();try{await PortalData.updateUser(d);notice.textContent="Brugeren er gemt.";form.elements.password.value="";clearResetLink();load()}catch(x){notice.textContent=x.message}};
 document.getElementById("delete-user").onclick=async function(){if(!confirm("Slet denne bruger? Profilen slettes ogsaa, hvis den er knyttet til brugeren."))return;try{await PortalData.deleteUser(userId);location.href="admin-brugere.html"}catch(x){notice.textContent=x.message}};
-document.getElementById("create-reset-link").onclick=async function(){if(!confirm("Opret et nyt nulstillingslink? Eventuelle tidligere links til brugeren bliver ugyldige."))return;var button=this,resetNotice=document.getElementById("reset-notice");clearResetLink();button.disabled=true;resetNotice.textContent="Opretter link...";try{var result=await PortalData.createPasswordResetLink(userId);document.getElementById("reset-url").value=result.url;document.getElementById("reset-expiry").textContent="Udløber: "+new Date(Number(result.expiresAt)).toLocaleString("da-DK");document.getElementById("reset-result").hidden=false;resetNotice.textContent="Linket er oprettet. Send det gennem en sikker kanal til "+result.email+"."}catch(x){resetNotice.textContent=x.message}finally{button.disabled=false}};
+document.getElementById("create-reset-link").onclick=async function(){if(!confirm("Opret og send et nyt nulstillingslink? Eventuelle tidligere links til brugeren bliver ugyldige."))return;var button=this,resetNotice=document.getElementById("reset-notice");clearResetLink();button.disabled=true;resetNotice.textContent="Opretter og sender link...";try{var result=await PortalData.createPasswordResetLink(userId);document.getElementById("reset-url").value=result.url;document.getElementById("reset-expiry").textContent="Udløber: "+new Date(Number(result.expiresAt)).toLocaleString("da-DK");document.getElementById("reset-result").hidden=false;resetNotice.textContent=result.emailSent?"Linket er oprettet og sendt til "+result.email+".":"Linket er oprettet, men e-mailen kunne ikke sendes automatisk. Kopiér linket og send det manuelt til "+result.email+"."}catch(x){resetNotice.textContent=x.message}finally{button.disabled=false}};
 document.getElementById("copy-reset-link").onclick=async function(){var input=document.getElementById("reset-url"),resetNotice=document.getElementById("reset-notice");try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(input.value)}else{input.select();document.execCommand("copy")}resetNotice.textContent="Linket er kopieret."}catch(x){input.select();resetNotice.textContent="Kopiering blev blokeret. Linket er markeret, så du kan kopiere det manuelt."}};
 </script>
 </body>
