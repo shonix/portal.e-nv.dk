@@ -415,7 +415,7 @@ if ($method === 'POST' && $action === 'admin-invitations') {
     $invitation = $statement->fetch();
     $invitation['url'] = accountInvitationUrl($token);
     $subject = 'Velkommen til Partnerportalen - Ejendomsnetværket';
-    $message = "Kære " . $email . ",\n\n" .
+    $message = "Kære Partner,\n\n" .
         "Du er nu oprettet som bruger i Partnerportalen - Ejendomsnetværket.\n" .
         "Her kan du tilgå din netværksgruppe og se partnere samt virksomheder i gruppen.\n" .
         "Partnerportalen kan også findes via https://e-nv.dk/\n\n" .
@@ -425,9 +425,9 @@ if ($method === 'POST' && $action === 'admin-invitations') {
         $invitation['url'] .
         "\n\nDu skal være logget ind for at se din netværksgruppe.\n" .
         "Kommunikation vil fortsat foregå via e-mail, og Partnerportalen sender ikke notifikationer for nu.\n\n" .
-        "Vedhæftet er en guide til, hvordan du føjer portalen til din mobiltelefons hjemmeskærm for nem adgang til webappen.\n\n" .
-        "Send mig venligst feedback, hvis du har kommentarer eller ønsker.\n\n" .
-        "Med netværkshilsen,\n\nEjendomsnetværket";
+        "Vedhæftet er en guide til, hvordan du føjer portalen til din mobiltelefons hjemmeskærm for nem adgang til web-appen :-)\n\n" .
+        "Send os venligst feedback, hvis du har kommentarer eller ønsker.\n\n" .
+        "Med Netværkshilsen,\nAyumi\nBackoffice og Kommunikation\nayumi@ep-dk.dk";
     $mailResult = sendPortalMail($config, $email, $subject, $message, [[
         'path' => dirname(__DIR__) . '/assets/Partnerportalen-guide-til-oprettelse.pdf',
         'name' => 'Partnerportalen - guide til oprettelse.pdf',
