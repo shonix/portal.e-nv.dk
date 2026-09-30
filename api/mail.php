@@ -42,7 +42,7 @@ function portalPrepareMailAttachments(array $attachments): array
         $path = trim((string) ($attachment['path'] ?? ''));
         $name = trim((string) ($attachment['name'] ?? basename($path)));
         $contentType = trim((string) ($attachment['content_type'] ?? 'application/octet-stream'));
-        if ($path === '' || $name === '' || str_contains($name, "\r") || str_contains($name, "\n")) {
+        if ($path === '' || $name === '' || strpos($name, "\r") !== false || strpos($name, "\n") !== false) {
             return ['attachments' => [], 'error' => 'Attachment path or name is invalid.'];
         }
         if (!is_file($path) || !is_readable($path)) {
