@@ -3,6 +3,7 @@
 
 .htaccess
 address-autocomplete.js
+assets/Partnerportalen-guide-til-oprettelse.pdf
 api/bootstrap.php
 api/features.php
 api/index.php

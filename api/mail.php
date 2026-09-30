@@ -31,6 +31,43 @@ function portalMailFailure(string $publicMessage, string $logMessage): array
     return portalMailResult(false, $publicMessage);
 }
 
+function portalPrepareMailAttachments(array $attachments): array
+{
+    $prepared = [];
+    foreach ($attachments as $attachment) {
+        if (!is_array($attachment)) {
+            return ['attachments' => [], 'error' => 'Attachment configuration must be an array.'];
+        }
+
+        $path = trim((string) ($attachment['path'] ?? ''));
+        $name = trim((string) ($attachment['name'] ?? basename($path)));
+        $contentType = trim((string) ($attachment['content_type'] ?? 'application/octet-stream'));
+        if ($path === '' || $name === '' || str_contains($name, "\r") || str_contains($name, "\n")) {
+            return ['attachments' => [], 'error' => 'Attachment path or name is invalid.'];
+        }
+        if (!is_file($path) || !is_readable($path)) {
+            return ['attachments' => [], 'error' => "Attachment is missing or unreadable: $path"];
+        }
+
+        $size = filesize($path);
+        if ($size === false || $size >= 3 * 1024 * 1024) {
+            return ['attachments' => [], 'error' => "Attachment exceeds the Microsoft Graph 3 MB limit: $path"];
+        }
+        $contents = file_get_contents($path);
+        if ($contents === false) {
+            return ['attachments' => [], 'error' => "Unable to read attachment: $path"];
+        }
+
+        $prepared[] = [
+            'name' => $name,
+            'content_type' => $contentType,
+            'content_base64' => base64_encode($contents),
+        ];
+    }
+
+    return ['attachments' => $prepared, 'error' => null];
+}
+
 function portalGraphAccessToken(array $settings): array
 {
     static $cachedTokens = [];
@@ -90,7 +127,13 @@ function portalGraphAccessToken(array $settings): array
     return ['sent' => true, 'token' => (string) $payload['access_token'], 'error' => null];
 }
 
-function sendPortalResendMail(array $settings, string $to, string $subject, string $body): array
+function sendPortalResendMail(
+    array $settings,
+    string $to,
+    string $subject,
+    string $body,
+    array $attachments = []
+): array
 {
     $apiKey = trim((string) ($settings['api_key'] ?? ''));
     $sender = trim((string) ($settings['sender_address'] ?? ''));
@@ -106,13 +149,24 @@ function sendPortalResendMail(array $settings, string $to, string $subject, stri
     }
 
     $senderName = trim((string) ($settings['sender_name'] ?? 'Ejendomsnetværket'));
-    $payload = json_encode([
+    $message = [
         'from' => $senderName . ' <' . $sender . '>',
         'to' => [$to],
         'reply_to' => $replyTo,
         'subject' => $subject,
         'text' => $body,
-    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    ];
+    if ($attachments !== []) {
+        $message['attachments'] = array_map(
+            static fn(array $attachment): array => [
+                'filename' => $attachment['name'],
+                'content' => $attachment['content_base64'],
+                'content_type' => $attachment['content_type'],
+            ],
+            $attachments
+        );
+    }
+    $payload = json_encode($message, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     if ($payload === false) {
         return portalMailFailure('E-mailen kunne ikke oprettes.', 'Unable to encode Resend message as JSON.');
     }
@@ -143,7 +197,13 @@ function sendPortalResendMail(array $settings, string $to, string $subject, stri
     return portalMailResult(true);
 }
 
-function sendPortalGraphMail(array $settings, string $to, string $subject, string $body): array
+function sendPortalGraphMail(
+    array $settings,
+    string $to,
+    string $subject,
+    string $body,
+    array $attachments = []
+): array
 {
     $sender = trim((string) ($settings['sender_address'] ?? ''));
     $replyTo = trim((string) ($settings['reply_to'] ?? ''));
@@ -157,18 +217,30 @@ function sendPortalGraphMail(array $settings, string $to, string $subject, strin
     }
 
     $senderName = trim((string) ($settings['sender_name'] ?? 'Ejendomsnetværket'));
+    $message = [
+        'subject' => $subject,
+        'body' => ['contentType' => 'Text', 'content' => $body],
+        'from' => ['emailAddress' => ['address' => $sender, 'name' => $senderName]],
+        'toRecipients' => [[
+            'emailAddress' => ['address' => $to],
+        ]],
+        'replyTo' => [[
+            'emailAddress' => ['address' => $replyTo],
+        ]],
+    ];
+    if ($attachments !== []) {
+        $message['attachments'] = array_map(
+            static fn(array $attachment): array => [
+                '@odata.type' => '#microsoft.graph.fileAttachment',
+                'name' => $attachment['name'],
+                'contentType' => $attachment['content_type'],
+                'contentBytes' => $attachment['content_base64'],
+            ],
+            $attachments
+        );
+    }
     $payload = json_encode([
-        'message' => [
-            'subject' => $subject,
-            'body' => ['contentType' => 'Text', 'content' => $body],
-            'from' => ['emailAddress' => ['address' => $sender, 'name' => $senderName]],
-            'toRecipients' => [[
-                'emailAddress' => ['address' => $to],
-            ]],
-            'replyTo' => [[
-                'emailAddress' => ['address' => $replyTo],
-            ]],
-        ],
+        'message' => $message,
         'saveToSentItems' => true,
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     if ($payload === false) {
@@ -202,19 +274,33 @@ function sendPortalGraphMail(array $settings, string $to, string $subject, strin
     return portalMailResult(true);
 }
 
-function sendPortalMail(array $config, string $to, string $subject, string $body): array
+function sendPortalMail(
+    array $config,
+    string $to,
+    string $subject,
+    string $body,
+    array $attachments = []
+): array
 {
     if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
         return portalMailFailure('Modtagerens e-mailadresse er ugyldig.', 'Invalid recipient address.');
     }
 
     $settings = portalMailSettings($config);
+    $attachmentResult = portalPrepareMailAttachments($attachments);
+    if ($attachmentResult['error'] !== null) {
+        return portalMailFailure(
+            'E-mailens vedhæftning kunne ikke læses.',
+            (string) $attachmentResult['error']
+        );
+    }
+    $preparedAttachments = $attachmentResult['attachments'];
     $provider = strtolower(trim((string) ($settings['provider'] ?? 'php_mail')));
     if ($provider === 'resend') {
-        return sendPortalResendMail($settings, $to, $subject, $body);
+        return sendPortalResendMail($settings, $to, $subject, $body, $preparedAttachments);
     }
     if ($provider === 'microsoft_graph') {
-        return sendPortalGraphMail($settings, $to, $subject, $body);
+        return sendPortalGraphMail($settings, $to, $subject, $body, $preparedAttachments);
     }
     if ($provider !== 'php_mail') {
         return portalMailFailure('E-mailtjenesten er ikke konfigureret.', "Unsupported mail provider: $provider");
@@ -223,6 +309,12 @@ function sendPortalMail(array $config, string $to, string $subject, string $body
     $sender = trim((string) ($settings['sender_address'] ?? 'noreply@e-nv.dk'));
     $replyTo = trim((string) ($settings['reply_to'] ?? $sender));
     $senderName = trim((string) ($settings['sender_name'] ?? 'Ejendomsnetværket'));
+    if ($preparedAttachments !== []) {
+        return portalMailFailure(
+            'E-mailtjenesten understøtter ikke vedhæftninger.',
+            'The php_mail provider does not support attachments.'
+        );
+    }
     $headers = implode("\r\n", [
         'From: ' . $senderName . ' <' . $sender . '>',
         'Reply-To: ' . $replyTo,
