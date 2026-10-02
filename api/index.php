@@ -372,7 +372,7 @@ if ($method === 'POST' && $action === 'password-reset') {
         (string) $targetUser['email'],
         'Din adgangskode til Partnerportalen er ændret',
         "Hej\n\nDin adgangskode til Partnerportalen er blevet ændret.\n\n" .
-        "Hvis du ikke selv foretog ændringen, skal du kontakte Ejendomsnetværket på kontakt@e-nv.dk.\n\n" .
+        "Hvis du ikke selv foretog ændringen, skal du hurtigst muligt kontakte administrator Ayumi Mayer på ayumi@ep-dk.dk.\n\n" .
         "Venlig hilsen\nEjendomsnetværket"
     );
     respond(['ok' => true]);
