@@ -51,14 +51,6 @@ function canAccessMeeting(PDO $pdo, int $meetingId, int $userId): bool
     return (bool) $access->fetchColumn();
 }
 
-function canAccessGroup(PDO $pdo, int $groupId, int $userId): bool
-{
-    if (($_SESSION['role'] ?? null) === 'admin') return true;
-    $access = $pdo->prepare('SELECT 1 FROM group_members WHERE group_id = :group_id AND user_id = :user_id');
-    $access->execute(['group_id' => $groupId, 'user_id' => $userId]);
-    return (bool) $access->fetchColumn();
-}
-
 function defaultPortalBannerSettings(): array
 {
     return [
@@ -177,7 +169,6 @@ if ($method === 'GET' && $action === 'group-bulletins') {
     requireLogin();
     $groupId = (int) ($_GET['groupId'] ?? 0);
     if ($groupId <= 0) respond(['error' => 'Group is required.'], 422);
-    if (!canAccessGroup($pdo, $groupId, $userId)) respond(['error' => 'Du har ikke adgang til denne gruppe.'], 403);
     $statement = $pdo->prepare(
         'SELECT gb.id::text, gb.message, gb.created_at AS "createdAt",
                 u.email AS "createdByEmail",

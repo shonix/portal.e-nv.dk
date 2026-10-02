@@ -665,12 +665,6 @@ if ($method === 'GET' && $action === 'group-partners') {
     requireLogin();
     $groupId = (int) ($_GET['groupId'] ?? 0);
     if ($groupId <= 0) respond(['error' => 'Group is required.'], 422);
-    $canViewBulletins = ($_SESSION['role'] ?? null) === 'admin';
-    if (!$canViewBulletins) {
-        $access = $pdo->prepare('SELECT 1 FROM group_members WHERE group_id = :group_id AND user_id = :user_id');
-        $access->execute(['group_id' => $groupId, 'user_id' => $userId]);
-        $canViewBulletins = (bool) $access->fetchColumn();
-    }
     $group = $pdo->prepare(
         'SELECT g.id::text, g.name, g.address, COUNT(gm.user_id)::int AS "memberCount"
          FROM groups g LEFT JOIN group_members gm ON gm.group_id = g.id
@@ -697,7 +691,6 @@ if ($method === 'GET' && $action === 'group-partners') {
         'group' => $group->fetch(),
         'partners' => $partnerRows,
         'missingLabels' => missingGroupLabels($pdo, $groupId),
-        'canViewBulletins' => $canViewBulletins,
     ]);
 }
 
