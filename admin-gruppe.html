@@ -16,9 +16,10 @@
     input,select,textarea{width:100%;margin-top:5px;padding:10px;border:1px solid var(--line);border-radius:5px;font:inherit}
     textarea{min-height:95px;resize:vertical}button{padding:9px 13px;border:1px solid var(--line);border-radius:5px;background:#fff;cursor:pointer}
     .primary{border-color:var(--green);background:var(--green);color:#fff}.danger{color:var(--danger)}
+    .mail-option{display:flex;gap:8px;align-items:center;margin:12px 0;color:var(--navy);font-size:14px}.mail-option input{width:auto;margin:0}
     .member,.bulletin{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}
     .member:last-child,.bulletin:last-child{border-bottom:0}.bulletin p{white-space:pre-line;margin:4px 0 0}
-    .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.notice{color:var(--green)}
+    .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.notice{color:var(--green)}.notice.warning{color:var(--danger)}
     .missing-inline{margin:18px 0 0;padding-top:18px;border-top:1px solid var(--line)}.missing-title{margin:0 0 10px;color:var(--muted);font-size:13px;font-weight:bold}
     .tag-list{display:flex;flex-wrap:wrap;gap:8px}.tag{display:inline-flex;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--green);font-size:13px;font-weight:bold}
     @media(max-width:700px){.toolbar{grid-template-columns:1fr}.member,.bulletin{grid-template-columns:1fr}}
@@ -33,7 +34,8 @@
     <h2>Opslagstavle</h2>
     <form id="bulletin-form">
       <label>Besked<textarea name="message" required placeholder="Skriv en besked til alle i gruppen"></textarea></label>
-      <button class="primary">Slå op</button>
+      <label class="mail-option"><input name="sendEmail" type="checkbox">Send også opslaget som e-mail til gruppens medlemmer</label>
+      <button class="primary" type="submit">Slå op</button>
       <p class="notice" id="bulletin-notice"></p>
     </form>
     <div id="bulletins"></div>
@@ -69,7 +71,7 @@ function renderEditor(){var form=document.getElementById("group-edit");if(!form)
 async function load(){detail=await PortalData.groupDetail(groupId);if(!detail.group)throw new Error("Gruppen findes ikke.");renderEditor();renderMissingLabels();render();loadBulletins()}
 PortalData.requireSession("admin").then(async function(){allUsers=(await PortalData.adminUsers({page:1,pageSize:500})).users;load()}).catch(function(x){intro.textContent=x.message});
 search.oninput=renderCandidates;add.onclick=async function(){if(!candidate.value)return;await PortalData.changeGroupMember({groupId:groupId,userId:candidate.value,operation:"add"});notice.textContent="Medlemmet er tilføjet.";load()};
-document.getElementById("bulletin-form").onsubmit=async function(e){e.preventDefault();var message=document.getElementById("bulletin-notice");try{await PortalData.addGroupBulletin({groupId:groupId,message:this.elements.message.value});this.reset();message.textContent="Opslaget er gemt.";loadBulletins()}catch(x){message.textContent=x.message}};
+document.getElementById("bulletin-form").onsubmit=async function(e){e.preventDefault();var form=this,message=document.getElementById("bulletin-notice"),button=form.querySelector('button[type="submit"]'),sendEmail=form.elements.sendEmail.checked;message.className="notice";message.textContent="";button.disabled=true;button.textContent=sendEmail?"Gemmer og sender...":"Gemmer...";try{var result=await PortalData.addGroupBulletin({groupId:groupId,message:form.elements.message.value,sendEmail:sendEmail}),delivery=result.emailDelivery;form.reset();if(!delivery){message.textContent="Opslaget er gemt."}else if(delivery.total===0){message.textContent="Opslaget er gemt. Gruppen har ingen medlemmer at sende til."}else if(delivery.failed===0){message.textContent="Opslaget er gemt og sendt som e-mail til "+delivery.sent+" "+(delivery.sent===1?"medlem.":"medlemmer.")}else{message.className="notice warning";message.textContent="Opslaget er gemt. E-mailen blev sendt til "+delivery.sent+" af "+delivery.total+" medlemmer; "+delivery.failed+" kunne ikke sendes."}loadBulletins()}catch(x){message.className="notice warning";message.textContent=x.message}finally{button.disabled=false;button.textContent="Slå op"}};
 </script>
 </body>
 </html>

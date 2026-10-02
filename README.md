@@ -115,7 +115,7 @@ Configuration fields:
 | `password` | Yes | PostgreSQL password. |
 | `portal_base_url` | Yes | Public portal URL used when generating invitation and password-reset links. |
 | `mail_from` | For meeting mail | Sender address passed to PHP `mail()` for meeting invitations and used by the local fallback. |
-| `mail` | For transactional mail | Provider credentials, sender and reply-to settings for account invitations and password resets. Supported providers are `resend`, `microsoft_graph` and the local `php_mail` fallback. |
+| `mail` | For transactional mail | Provider credentials, sender and reply-to settings for account invitations, password resets and group-bulletin emails. Supported providers are `resend`, `microsoft_graph` and the local `php_mail` fallback. |
 | `meeting_attachment_dir` | Recommended | Private storage path for meeting attachments. |
 | `meeting_attachment_max_bytes` | No | Attachment limit in bytes; defaults to 10 MB. |
 | `partner_material_dir` | Recommended | Private storage path for downloadable partner materials. |

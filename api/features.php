@@ -202,19 +202,65 @@ if ($method === 'POST' && $action === 'admin-group-bulletins') {
     requireAdmin();
     $body = requestBody();
     required($body, ['groupId', 'message']);
+    $groupId = (int) $body['groupId'];
     $message = trim((string) $body['message']);
     if (strlen($message) > 4000) respond(['error' => 'Beskeden er for lang.'], 422);
+
+    $groupStatement = $pdo->prepare('SELECT id::text, name FROM groups WHERE id = :id');
+    $groupStatement->execute(['id' => $groupId]);
+    $group = $groupStatement->fetch();
+    if (!$group) respond(['error' => 'Gruppen findes ikke.'], 404);
+
     $statement = $pdo->prepare(
         'INSERT INTO group_bulletins (group_id, created_by, message)
          VALUES (:group_id, :created_by, :message)
          RETURNING id::text, message, created_at AS "createdAt"'
     );
     $statement->execute([
-        'group_id' => (int) $body['groupId'],
+        'group_id' => $groupId,
         'created_by' => $userId,
         'message' => $message,
     ]);
-    respond(['bulletin' => $statement->fetch()], 201);
+    $bulletin = $statement->fetch();
+    $response = ['bulletin' => $bulletin];
+
+    if (($body['sendEmail'] ?? false) === true) {
+        $recipientStatement = $pdo->prepare(
+            'SELECT DISTINCT u.email
+             FROM group_members gm
+             JOIN users u ON u.id = gm.user_id
+             WHERE gm.group_id = :group_id
+             ORDER BY u.email'
+        );
+        $recipientStatement->execute(['group_id' => $groupId]);
+        $recipients = $recipientStatement->fetchAll(PDO::FETCH_COLUMN);
+        $sent = 0;
+        $failed = 0;
+        $groupName = (string) preg_replace('/[\r\n]+/', ' ', (string) $group['name']);
+        $subject = 'Nyt opslag i ' . $groupName;
+        $mailBody = "Hej\n\nDer er kommet et nyt opslag i {$groupName}:\n\n" .
+            $message .
+            "\n\nSe gruppen og opslagstavlen her:\n" .
+            portalUrl('gruppe.html?id=' . urlencode((string) $group['id'])) .
+            "\n\nVenlig hilsen\nEjendomsnetværket";
+
+        foreach ($recipients as $recipient) {
+            $mailResult = sendPortalMail($config, (string) $recipient, $subject, $mailBody);
+            if ($mailResult['sent']) {
+                $sent++;
+            } else {
+                $failed++;
+            }
+        }
+
+        $response['emailDelivery'] = [
+            'total' => count($recipients),
+            'sent' => $sent,
+            'failed' => $failed,
+        ];
+    }
+
+    respond($response, 201);
 }
 
 if ($method === 'POST' && $action === 'admin-delete-group-bulletin') {
