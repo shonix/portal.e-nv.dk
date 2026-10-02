@@ -421,9 +421,8 @@
     });
   }
   Promise.all([PortalData.groups(), PortalData.session()]).then(async function (results) {
-    var groups = results[0], session = results[1], accessible = [];
-    if (session.loggedIn) accessible = await PortalData.myGroups();
-    var allowed = accessible.map(function (group) { return group.id; });
+    var groups = results[0], session = results[1];
+    var allowed = session.loggedIn ? groups.map(function (group) { return group.id; }) : [];
     document.getElementById("meeting-group-filter").innerHTML = '<option value="">Alle grupper</option>' + groups.map(function (group) {
       return '<option value="' + PortalData.escape(group.id) + '">' + PortalData.escape(group.name) + '</option>';
     }).join("");

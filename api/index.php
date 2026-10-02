@@ -523,28 +523,10 @@ if ($method === 'GET' && $action === 'profile-picture') {
     $statement = $pdo->prepare(
         'SELECT p.id, p.profile_picture_stored_name, p.profile_picture_mime_type, p.profile_picture_size
          FROM partners p
-         JOIN users profile_owner ON profile_owner.id = p.user_id
-           OR (p.user_id IS NULL AND LOWER(TRIM(profile_owner.email)) = LOWER(TRIM(p.email)))
          WHERE p.id = :partner_id
-           AND p.profile_picture_stored_name IS NOT NULL
-           AND (
-              :is_admin = 1
-              OR profile_owner.id = :owner_user_id
-              OR EXISTS (
-                  SELECT 1
-                  FROM group_members viewer_groups
-                  JOIN group_members partner_groups ON partner_groups.group_id = viewer_groups.group_id
-                  WHERE viewer_groups.user_id = :viewer_user_id
-                    AND partner_groups.user_id = profile_owner.id
-              )
-           )'
+           AND p.profile_picture_stored_name IS NOT NULL'
     );
-    $statement->execute([
-        'partner_id' => $partnerId,
-        'is_admin' => ($_SESSION['role'] ?? null) === 'admin' ? 1 : 0,
-        'owner_user_id' => $userId,
-        'viewer_user_id' => $userId,
-    ]);
+    $statement->execute(['partner_id' => $partnerId]);
     $picture = $statement->fetch();
     if (!$picture) respond(['error' => 'Profilbilledet findes ikke.'], 404);
     $path = profilePictureDirectory($config) . DIRECTORY_SEPARATOR . basename((string) $picture['profile_picture_stored_name']);
@@ -665,43 +647,16 @@ if ($method === 'GET' && $action === 'admin-labels') {
 
 if ($method === 'GET' && $action === 'partners') {
     requireLogin();
-    if (($_SESSION['role'] ?? null) === 'admin') {
-        $partners = $pdo->query(
-            'SELECT p.id::text, p.slug, p.name, p.linkedin_url AS "linkedin", p.industry, p.company,
-                     p.company_url AS "companyUrl", p.email, p.phone, p.biography,
-                     p.profile_picture_stored_name AS "profilePictureStoredName",
-                     COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels
-              FROM partners p
-              LEFT JOIN partner_profile_labels ppl ON ppl.partner_id = p.id
-              LEFT JOIN partner_labels l ON l.id = ppl.label_id
-              GROUP BY p.id ORDER BY p.name'
-        )->fetchAll();
-        attachProfilePictureUrls($partners);
-        respond(['partners' => $partners]);
-    }
-    $statement = $pdo->prepare(
-        'SELECT p.id::text, p.slug, p.name, p.linkedin_url AS "linkedin",
-                 p.industry, p.company, p.company_url AS "companyUrl", p.email, p.phone, p.biography,
+    $partners = $pdo->query(
+        'SELECT p.id::text, p.slug, p.name, p.linkedin_url AS "linkedin", p.industry, p.company,
+                 p.company_url AS "companyUrl", p.email, p.phone, p.biography,
                  p.profile_picture_stored_name AS "profilePictureStoredName",
                  COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels
          FROM partners p
-         JOIN users profile_owner ON profile_owner.id = p.user_id
-           OR (p.user_id IS NULL AND LOWER(TRIM(profile_owner.email)) = LOWER(TRIM(p.email)))
          LEFT JOIN partner_profile_labels ppl ON ppl.partner_id = p.id
          LEFT JOIN partner_labels l ON l.id = ppl.label_id
-         WHERE profile_owner.id = :owner_user_id
-            OR EXISTS (
-                SELECT 1
-                FROM group_members viewer_groups
-                JOIN group_members partner_groups ON partner_groups.group_id = viewer_groups.group_id
-                WHERE viewer_groups.user_id = :viewer_user_id
-                  AND partner_groups.user_id = profile_owner.id
-            )
-         GROUP BY p.id
-         ORDER BY p.name'
-    );
-    $statement->execute(['owner_user_id' => $userId, 'viewer_user_id' => $userId]);
-    $partners = $statement->fetchAll();
+         GROUP BY p.id ORDER BY p.name'
+    )->fetchAll();
     attachProfilePictureUrls($partners);
     respond(['partners' => $partners]);
 }
@@ -710,10 +665,11 @@ if ($method === 'GET' && $action === 'group-partners') {
     requireLogin();
     $groupId = (int) ($_GET['groupId'] ?? 0);
     if ($groupId <= 0) respond(['error' => 'Group is required.'], 422);
-    if (($_SESSION['role'] ?? null) !== 'admin') {
+    $canViewBulletins = ($_SESSION['role'] ?? null) === 'admin';
+    if (!$canViewBulletins) {
         $access = $pdo->prepare('SELECT 1 FROM group_members WHERE group_id = :group_id AND user_id = :user_id');
         $access->execute(['group_id' => $groupId, 'user_id' => $userId]);
-        if (!$access->fetchColumn()) respond(['error' => 'You do not have access to this group.'], 403);
+        $canViewBulletins = (bool) $access->fetchColumn();
     }
     $group = $pdo->prepare(
         'SELECT g.id::text, g.name, g.address, COUNT(gm.user_id)::int AS "memberCount"
@@ -737,7 +693,12 @@ if ($method === 'GET' && $action === 'group-partners') {
     $partners->execute(['group_id' => $groupId]);
     $partnerRows = $partners->fetchAll();
     attachProfilePictureUrls($partnerRows);
-    respond(['group' => $group->fetch(), 'partners' => $partnerRows, 'missingLabels' => missingGroupLabels($pdo, $groupId)]);
+    respond([
+        'group' => $group->fetch(),
+        'partners' => $partnerRows,
+        'missingLabels' => missingGroupLabels($pdo, $groupId),
+        'canViewBulletins' => $canViewBulletins,
+    ]);
 }
 
 if ($method === 'GET' && $action === 'meeting-partners') {
@@ -1135,51 +1096,20 @@ if ($method === 'GET' && $action === 'partner-detail') {
     $partnerId = (int) ($_GET['id'] ?? 0);
     $slug = trim((string) ($_GET['slug'] ?? ''));
     if ($partnerId <= 0 && $slug === '') respond(['error' => 'Partner is required.'], 422);
-    $groupId = (int) ($_GET['groupId'] ?? 0);
     $statement = $pdo->prepare(
         'SELECT p.id::text, p.slug, p.name, p.linkedin_url AS "linkedin",
                 p.industry, p.company, p.company_url AS "companyUrl", p.email, p.phone, p.biography,
                 p.profile_picture_stored_name AS "profilePictureStoredName",
                 COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels
          FROM partners p
-         JOIN users profile_owner ON profile_owner.id = p.user_id
-           OR (p.user_id IS NULL AND LOWER(TRIM(profile_owner.email)) = LOWER(TRIM(p.email)))
          LEFT JOIN partner_profile_labels ppl ON ppl.partner_id = p.id
          LEFT JOIN partner_labels l ON l.id = ppl.label_id
          WHERE ((:partner_id > 0 AND p.id = :partner_id) OR (:partner_id = 0 AND p.slug = :slug))
-           AND (
-              :is_admin = 1
-              OR profile_owner.id = :owner_user_id
-              OR EXISTS (
-                  SELECT 1
-                  FROM group_members viewer_groups
-                  JOIN group_members partner_groups ON partner_groups.group_id = viewer_groups.group_id
-                  WHERE viewer_groups.user_id = :viewer_user_id
-                    AND partner_groups.user_id = profile_owner.id
-              )
-              OR (
-                  :has_group_context = 1
-                  AND EXISTS (
-                      SELECT 1
-                      FROM group_members viewer_group
-                      JOIN group_members partner_group ON partner_group.group_id = viewer_group.group_id
-                      WHERE viewer_group.group_id = :checked_group_id
-                        AND viewer_group.user_id = :group_viewer_user_id
-                        AND partner_group.user_id = profile_owner.id
-                  )
-              )
-           )
          GROUP BY p.id'
     );
     $statement->execute([
         'partner_id' => $partnerId,
         'slug' => $slug,
-        'is_admin' => ($_SESSION['role'] ?? null) === 'admin' ? 1 : 0,
-        'owner_user_id' => $userId,
-        'viewer_user_id' => $userId,
-        'has_group_context' => $groupId > 0 ? 1 : 0,
-        'checked_group_id' => $groupId,
-        'group_viewer_user_id' => $userId,
     ]);
     $partner = $statement->fetch() ?: null;
     attachProfilePictureUrl($partner);

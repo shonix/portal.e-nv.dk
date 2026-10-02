@@ -143,22 +143,14 @@
   </main>
   <script src="portal-data.js?v=20260811-01"></script><script src="portal-header.js?v=20260811-04"></script>
   <script>
-    PortalData.requireSession().then(function () { return PortalData.myGroups(); }).then(async function (groups) {
-      var responses = await Promise.all(groups.map(function (group) { return PortalData.groupPartners(group.id); }));
-      var seen = {};
-      return responses.flatMap(function (response) { return response.partners; }).filter(function (partner) {
-        if (seen[partner.id]) return false;
-        seen[partner.id] = true;
-        return true;
-      });
-    }).then(function (partners) {
+    PortalData.requireSession().then(function () { return PortalData.partners(); }).then(function (partners) {
       document.getElementById("profile-grid").innerHTML = partners.length ? partners.map(function (partner) {
         var avatar = partner.profileImageUrl ? '<img src="' + PortalData.escape(partner.profileImageUrl) + '" alt="">' : PortalData.escape(partner.name.charAt(0));
         return '<a class="profile-card" href="partner-profil.html?id=' + encodeURIComponent(partner.id) + '"><span class="avatar">' +
           avatar + '</span><span><h2>' + PortalData.escape(partner.name) + '</h2>' +
           (partner.company ? '<p>' + PortalData.escape(partner.company) + '</p>' : '') +
           '<p class="labels">' + PortalData.escape(partner.labels || "") + '</p></span></a>';
-      }).join("") : '<p>Der er endnu ingen partnerprofiler i dine grupper.</p>';
+      }).join("") : '<p>Der er endnu ingen partnerprofiler.</p>';
     }).catch(function (problem) {
       document.getElementById("profile-grid").innerHTML = '<p>Partnerne kunne ikke hentes: ' + PortalData.escape(problem.message) + '</p>';
     });

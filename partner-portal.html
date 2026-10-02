@@ -270,9 +270,8 @@
       : (meeting.status || "upcoming");
   }
   Promise.all([PortalData.groups(), PortalData.session()]).then(async function (results) {
-    var groups = results[0], session = results[1], accessible = [];
-    if (session.loggedIn) accessible = await PortalData.myGroups();
-    var allowed = accessible.map(function (group) { return group.id; });
+    var groups = results[0], session = results[1];
+    var allowed = session.loggedIn ? groups.map(function (group) { return group.id; }) : [];
     document.getElementById("group-list").innerHTML = groups.map(function(group,index) {
       var tag = allowed.includes(group.id) ? 'a href="gruppe.html?id='+encodeURIComponent(group.id)+'"' : "div";
       return '<'+tag+' class="group-card"><span class="group-avatar">'+(index+1)+'</span><span><h3>'+PortalData.escape(group.name)+'</h3><p class="portal-meta">'+PortalData.escape(group.address||"")+'</p></span></'+(tag.startsWith("a ")?"a":"div")+'>';
