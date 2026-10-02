@@ -158,6 +158,7 @@ the migrations that have not previously been applied, in numeric order:
 | 016 | Administrator-managed information banner |
 | 017 | Downloadable partner materials and upload metadata |
 | 018 | Self-registration as a meeting guest |
+| 019 | Per-user preference for group-bulletin emails |
 
 The project does not yet have a migration ledger. Record the last applied
 migration as part of the deployment notes. Back up the database before applying

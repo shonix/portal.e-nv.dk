@@ -1188,6 +1188,14 @@ if ($method === 'GET' && $action === 'partner-detail') {
 
 if ($method === 'GET' && $action === 'my-profile') {
     requireLogin();
+    $preferenceStatement = $pdo->prepare(
+        'SELECT CASE WHEN bulletin_emails_enabled THEN 1 ELSE 0 END
+         FROM users
+         WHERE id = :id'
+    );
+    $preferenceStatement->execute(['id' => $userId]);
+    $preferenceValue = $preferenceStatement->fetchColumn();
+    $bulletinEmailsEnabled = $preferenceValue === false || (int) $preferenceValue === 1;
     $statement = $pdo->prepare(
         'SELECT p.id::text, p.slug, p.name, p.linkedin_url AS "linkedin", p.industry, p.company,
                 p.company_url AS "companyUrl", p.email, p.phone, p.biography,
@@ -1205,7 +1213,7 @@ if ($method === 'GET' && $action === 'my-profile') {
         $partner['labelIds'] = json_decode((string) $partner['labelIds'], true) ?: [];
         attachProfilePictureUrl($partner);
     }
-    respond(['partner' => $partner]);
+    respond(['partner' => $partner, 'bulletinEmailsEnabled' => $bulletinEmailsEnabled]);
 }
 
 if ($method === 'POST' && $action === 'my-profile') {
@@ -1248,6 +1256,18 @@ if ($method === 'POST' && $action === 'my-profile') {
     $insertLabel = $pdo->prepare('INSERT INTO partner_profile_labels (partner_id, label_id) VALUES (:partner_id, :label_id) ON CONFLICT DO NOTHING');
     foreach (($body['labelIds'] ?? []) as $labelId) {
         $insertLabel->execute(['partner_id' => (int) $partner['id'], 'label_id' => (int) $labelId]);
+    }
+    if (array_key_exists('bulletinEmailsEnabled', $body)) {
+        $preferenceStatement = $pdo->prepare(
+            'UPDATE users SET bulletin_emails_enabled = :enabled WHERE id = :id'
+        );
+        $preferenceStatement->bindValue(
+            ':enabled',
+            $body['bulletinEmailsEnabled'] === true,
+            PDO::PARAM_BOOL
+        );
+        $preferenceStatement->bindValue(':id', $userId, PDO::PARAM_INT);
+        $preferenceStatement->execute();
     }
     respond(['partner' => $partner]);
 }

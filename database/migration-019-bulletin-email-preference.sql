@@ -1,0 +1,2 @@
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS bulletin_emails_enabled BOOLEAN NOT NULL DEFAULT TRUE;

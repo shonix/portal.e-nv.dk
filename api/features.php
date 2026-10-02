@@ -230,6 +230,7 @@ if ($method === 'POST' && $action === 'admin-group-bulletins') {
              FROM group_members gm
              JOIN users u ON u.id = gm.user_id
              WHERE gm.group_id = :group_id
+               AND u.bulletin_emails_enabled
              ORDER BY u.email'
         );
         $recipientStatement->execute(['group_id' => $groupId]);
@@ -242,6 +243,8 @@ if ($method === 'POST' && $action === 'admin-group-bulletins') {
             $message .
             "\n\nSe gruppen og opslagstavlen her:\n" .
             portalUrl('gruppe.html?id=' . urlencode((string) $group['id'])) .
+            "\n\nDu kan fravælge disse e-mails under Min profil:\n" .
+            portalUrl('min-profil.html') .
             "\n\nVenlig hilsen\nEjendomsnetværket";
 
         foreach ($recipients as $recipient) {
