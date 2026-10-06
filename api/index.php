@@ -176,10 +176,15 @@ function requireMeetingAccess(PDO $pdo, array $meeting, int $userId): void
 
 if ($method === 'POST' && $action === 'login') {
     $body = requestBody();
+    $submittedPassword = (string) ($body['password'] ?? '');
     $statement = $pdo->prepare('SELECT id, email, password_hash, role FROM users WHERE email = :email');
     $statement->execute(['email' => strtolower(trim((string) ($body['email'] ?? '')))]);
     $user = $statement->fetch();
-    if (!$user || !password_verify((string) ($body['password'] ?? ''), $user['password_hash'])) {
+    $passwordHash = $user
+        ? (string) $user['password_hash']
+        : '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.';
+    $passwordMatches = password_verify($submittedPassword, $passwordHash);
+    if (!$user || !$passwordMatches) {
         respond(['error' => 'Invalid email or password.'], 401);
     }
     session_regenerate_id(true);
@@ -1373,31 +1378,17 @@ if ($method === 'POST' && $action === 'admin-update-user') {
     if ($targetUserId === $userId && $role !== 'admin') {
         respond(['error' => 'Du kan ikke fjerne din egen administratorrolle.'], 422);
     }
-    if ($password !== '' && strlen($password) < 10) {
-        respond(['error' => 'Adgangskoden skal være mindst 10 tegn.'], 422);
+    if ($password !== '') {
+        respond(['error' => 'Adgangskoder kan kun ændres via et personligt nulstillingslink.'], 422);
     }
     $pdo->beginTransaction();
     try {
-        if ($password !== '') {
-            $statement = $pdo->prepare('UPDATE users SET email = :email, role = :role, password_hash = :password_hash WHERE id = :id RETURNING id::text, email, role');
-            $statement->execute([
-                'id' => $targetUserId,
-                'email' => strtolower(trim((string) $body['email'])),
-                'role' => $role,
-                'password_hash' => password_hash($password, PASSWORD_DEFAULT),
-            ]);
-            $pdo->prepare(
-                'UPDATE password_reset_tokens SET used_at = NOW()
-                 WHERE user_id = :user_id AND used_at IS NULL'
-            )->execute(['user_id' => $targetUserId]);
-        } else {
-            $statement = $pdo->prepare('UPDATE users SET email = :email, role = :role WHERE id = :id RETURNING id::text, email, role');
-            $statement->execute([
-                'id' => $targetUserId,
-                'email' => strtolower(trim((string) $body['email'])),
-                'role' => $role,
-            ]);
-        }
+        $statement = $pdo->prepare('UPDATE users SET email = :email, role = :role WHERE id = :id RETURNING id::text, email, role');
+        $statement->execute([
+            'id' => $targetUserId,
+            'email' => strtolower(trim((string) $body['email'])),
+            'role' => $role,
+        ]);
         $userRow = $statement->fetch();
         if (!$userRow) {
             $pdo->rollBack();

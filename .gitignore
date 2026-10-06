@@ -40,6 +40,8 @@ deploy-*.tar.gz
 
 # Logs, caches and temporary files
 .dev/
+outputs/
+tmp/
 *.log
 *.tmp
 *.temp

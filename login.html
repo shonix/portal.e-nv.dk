@@ -16,6 +16,7 @@
     label { display:block; margin-top:14px; color:var(--muted); font-size:13px; font-weight:bold; }
     input { width:100%; margin-top:5px; padding:11px; border:1px solid var(--line); border-radius:5px; font:inherit; }
     button { width:100%; margin-top:18px; padding:11px; border:0; border-radius:5px; background:var(--green); color:#fff; cursor:pointer; font:inherit; font-weight:bold; }
+    button:disabled { cursor:wait; opacity:.65; }
     .forgot-password { margin:10px 0 0; text-align:right; font-size:14px; }
     .forgot-password a { color:var(--green); text-underline-offset:3px; }
     .error { display:none; color:#a12626; }
@@ -37,8 +38,9 @@
   <script>
     document.getElementById("login-form").addEventListener("submit", async function (event) {
       event.preventDefault();
-      var error = document.getElementById("error");
+      var error = document.getElementById("error"), button = event.target.querySelector("button"), startedAt = Date.now();
       error.style.display = "none";
+      button.disabled = true;
       try {
         var session = await PortalData.login(event.target.email.value, event.target.password.value);
         var next = new URLSearchParams(location.search).get("next");
@@ -46,8 +48,11 @@
           ? next
           : (session.role === "admin" ? "admin.html" : "index.html");
       } catch (problem) {
+        var remainingDelay = 750 - (Date.now() - startedAt);
+        if (remainingDelay > 0) await new Promise(function (resolve) { setTimeout(resolve, remainingDelay); });
         error.textContent = problem.message;
         error.style.display = "block";
+        button.disabled = false;
       }
     });
   </script>
