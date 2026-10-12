@@ -61,8 +61,10 @@ hosting-root/
     ...
   portal-private/            Persistent, non-public uploaded files
     meeting-attachments/
+    meeting-pictures/
     partner-materials/
     profile-pictures/
+    group-pictures/
   public_html/               Main website; unrelated to portal deployment
 ```
 
@@ -70,7 +72,7 @@ Only the contents of the repository's public application are deployed to
 `portal/`. A portal deployment must never replace or delete `portal-config.php`,
 `portal-private/` or `public_html/`.
 
-The PHP process must have write access to the three directories inside
+The PHP process must have write access to the five directories inside
 `portal-private/`. The application creates them with restrictive permissions if
 they do not already exist.
 
@@ -99,10 +101,14 @@ return [
     ],
     'meeting_attachment_dir' => __DIR__ . '/portal-private/meeting-attachments',
     'meeting_attachment_max_bytes' => 10485760,
+    'meeting_picture_dir' => __DIR__ . '/portal-private/meeting-pictures',
+    'meeting_picture_max_bytes' => 5242880,
     'partner_material_dir' => __DIR__ . '/portal-private/partner-materials',
     'partner_material_max_bytes' => 26214400,
     'profile_picture_dir' => __DIR__ . '/portal-private/profile-pictures',
     'profile_picture_max_bytes' => 2097152,
+    'group_picture_dir' => __DIR__ . '/portal-private/group-pictures',
+    'group_picture_max_bytes' => 5242880,
 ];
 ```
 
@@ -118,10 +124,14 @@ Configuration fields:
 | `mail` | For transactional mail | Provider credentials, sender and reply-to settings for account invitations, password resets and group-bulletin emails. Supported providers are `resend`, `microsoft_graph` and the local `php_mail` fallback. |
 | `meeting_attachment_dir` | Recommended | Private storage path for meeting attachments. |
 | `meeting_attachment_max_bytes` | No | Attachment limit in bytes; defaults to 10 MB. |
+| `meeting_picture_dir` | Recommended | Private storage path for meeting cover pictures. |
+| `meeting_picture_max_bytes` | No | Meeting-cover limit in bytes; defaults to 5 MB. |
 | `partner_material_dir` | Recommended | Private storage path for downloadable partner materials. |
 | `partner_material_max_bytes` | No | Partner-material limit in bytes; defaults to 25 MB. |
 | `profile_picture_dir` | Recommended | Private storage path for profile pictures. |
 | `profile_picture_max_bytes` | No | Profile-picture limit in bytes; defaults to 2 MB. |
+| `group_picture_dir` | Recommended | Private storage path for group cover pictures. |
+| `group_picture_max_bytes` | No | Group-cover limit in bytes; defaults to 5 MB. |
 
 Never place real credentials in `api/config.example.php`, GitHub Actions files,
 issues, commits or screenshots. GitHub deployment credentials must be stored as
@@ -159,6 +169,8 @@ the migrations that have not previously been applied, in numeric order:
 | 017 | Downloadable partner materials and upload metadata |
 | 018 | Self-registration as a meeting guest |
 | 019 | Per-user preference for group-bulletin emails |
+| 020 | Group descriptions and cover-picture metadata |
+| 021 | Meeting cover-picture metadata |
 
 The project does not yet have a migration ledger. Record the last applied
 migration as part of the deployment notes. Back up the database before applying

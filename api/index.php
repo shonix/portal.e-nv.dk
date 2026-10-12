@@ -100,6 +100,16 @@ function profilePictureDirectory(array $config): string
     return (string) ($config['profile_picture_dir'] ?? (dirname(__DIR__, 2) . '/portal-private/profile-pictures'));
 }
 
+function groupPictureDirectory(array $config): string
+{
+    return (string) ($config['group_picture_dir'] ?? (dirname(__DIR__, 2) . '/portal-private/group-pictures'));
+}
+
+function meetingPictureDirectory(array $config): string
+{
+    return (string) ($config['meeting_picture_dir'] ?? (dirname(__DIR__, 2) . '/portal-private/meeting-pictures'));
+}
+
 function profilePictureUrl(array $partner): ?string
 {
     if (empty($partner['profilePictureStoredName']) || empty($partner['id'])) return null;
@@ -120,6 +130,46 @@ function attachProfilePictureUrls(array &$partners): void
         attachProfilePictureUrl($partner);
     }
     unset($partner);
+}
+
+function groupCoverUrl(array $group): ?string
+{
+    if (empty($group['coverImageStoredName']) || empty($group['id'])) return null;
+    return 'api/index.php?action=group-picture&groupId=' . urlencode((string) $group['id'])
+        . '&v=' . urlencode((string) $group['coverImageStoredName']);
+}
+
+function attachGroupCoverUrl(?array &$group): void
+{
+    if (!$group) return;
+    $group['coverImageUrl'] = groupCoverUrl($group);
+    unset($group['coverImageStoredName']);
+}
+
+function attachGroupCoverUrls(array &$groups): void
+{
+    foreach ($groups as &$group) attachGroupCoverUrl($group);
+    unset($group);
+}
+
+function meetingCoverUrl(array $meeting): ?string
+{
+    if (empty($meeting['coverImageStoredName']) || empty($meeting['id'])) return null;
+    return 'api/index.php?action=meeting-picture&meetingId=' . urlencode((string) $meeting['id'])
+        . '&v=' . urlencode((string) $meeting['coverImageStoredName']);
+}
+
+function attachMeetingCoverUrl(?array &$meeting): void
+{
+    if (!$meeting) return;
+    $meeting['coverImageUrl'] = meetingCoverUrl($meeting);
+    unset($meeting['coverImageStoredName']);
+}
+
+function attachMeetingCoverUrls(array &$meetings): void
+{
+    foreach ($meetings as &$meeting) attachMeetingCoverUrl($meeting);
+    unset($meeting);
 }
 
 function meetingByKey(PDO $pdo, string $meetingKey): ?array
@@ -545,32 +595,281 @@ if ($method === 'GET' && $action === 'profile-picture') {
     exit;
 }
 
+if ($method === 'POST' && $action === 'admin-meeting-picture') {
+    requireAdmin();
+    $meetingId = (int) ($_POST['meetingId'] ?? 0);
+    $file = $_FILES['file'] ?? null;
+    if ($meetingId <= 0 || !$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        respond(['error' => 'Vælg et møde og et billede.'], 422);
+    }
+    $maxSize = (int) ($config['meeting_picture_max_bytes'] ?? 5 * 1024 * 1024);
+    if ((int) $file['size'] <= 0 || (int) $file['size'] > $maxSize) {
+        respond(['error' => 'Billedet er tomt eller større end 5 MB.'], 422);
+    }
+    $extension = strtolower(pathinfo((string) $file['name'], PATHINFO_EXTENSION));
+    $allowed = [
+        'jpg' => ['image/jpeg'], 'jpeg' => ['image/jpeg'],
+        'png' => ['image/png'], 'webp' => ['image/webp'],
+    ];
+    if (!isset($allowed[$extension])) respond(['error' => 'Brug JPG, PNG eller WebP.'], 422);
+    $mime = (new finfo(FILEINFO_MIME_TYPE))->file((string) $file['tmp_name']) ?: 'application/octet-stream';
+    $dimensions = getimagesize((string) $file['tmp_name']);
+    if (!in_array($mime, $allowed[$extension], true) || !$dimensions) {
+        respond(['error' => 'Filen ligner ikke et gyldigt billede.'], 422);
+    }
+    $width = (int) ($dimensions[0] ?? 0);
+    $height = (int) ($dimensions[1] ?? 0);
+    if ($width < 600 || $height < 300) {
+        respond(['error' => 'Billedet skal være mindst 600 × 300 pixels.'], 422);
+    }
+    if ($width > 12000 || $height > 12000 || $width * $height > 60000000) {
+        respond(['error' => 'Billedets dimensioner er for store.'], 422);
+    }
+    $meetingStatement = $pdo->prepare(
+        'SELECT id::text, cover_image_stored_name AS "coverImageStoredName"
+         FROM meetings WHERE id = :id'
+    );
+    $meetingStatement->execute(['id' => $meetingId]);
+    $meeting = $meetingStatement->fetch();
+    if (!$meeting) respond(['error' => 'Mødet findes ikke.'], 404);
+    $directory = meetingPictureDirectory($config);
+    if (!is_dir($directory) && !mkdir($directory, 0750, true) && !is_dir($directory)) {
+        respond(['error' => 'Uploadmappen kunne ikke oprettes.'], 500);
+    }
+    $directory = realpath($directory) ?: '';
+    if ($directory === '') respond(['error' => 'Uploadmappen kunne ikke valideres.'], 500);
+    $storedName = bin2hex(random_bytes(20)) . '.' . ($extension === 'jpeg' ? 'jpg' : $extension);
+    $destination = $directory . DIRECTORY_SEPARATOR . $storedName;
+    if (!move_uploaded_file((string) $file['tmp_name'], $destination)) {
+        respond(['error' => 'Billedet kunne ikke gemmes.'], 500);
+    }
+    $oldName = (string) ($meeting['coverImageStoredName'] ?? '');
+    try {
+        $pdo->prepare(
+            'UPDATE meetings
+             SET cover_image_stored_name = :stored_name,
+                 cover_image_mime_type = :mime_type,
+                 cover_image_size = :file_size
+             WHERE id = :id'
+        )->execute([
+            'stored_name' => $storedName,
+            'mime_type' => $mime,
+            'file_size' => (int) $file['size'],
+            'id' => $meetingId,
+        ]);
+    } catch (Throwable $exception) {
+        @unlink($destination);
+        throw $exception;
+    }
+    if ($oldName !== '') {
+        $oldPath = $directory . DIRECTORY_SEPARATOR . basename($oldName);
+        if (is_file($oldPath)) @unlink($oldPath);
+    }
+    $meeting['coverImageStoredName'] = $storedName;
+    attachMeetingCoverUrl($meeting);
+    respond(['meeting' => $meeting]);
+}
+
+if ($method === 'POST' && $action === 'admin-delete-meeting-picture') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['meetingId']);
+    $existing = $pdo->prepare('SELECT cover_image_stored_name FROM meetings WHERE id = :id');
+    $existing->execute(['id' => (int) $body['meetingId']]);
+    $storedName = $existing->fetchColumn();
+    if ($storedName === false) respond(['error' => 'Mødet findes ikke.'], 404);
+    $pdo->prepare(
+        'UPDATE meetings
+         SET cover_image_stored_name = NULL, cover_image_mime_type = NULL, cover_image_size = NULL
+         WHERE id = :id'
+    )->execute(['id' => (int) $body['meetingId']]);
+    if ($storedName) {
+        $path = meetingPictureDirectory($config) . DIRECTORY_SEPARATOR . basename((string) $storedName);
+        if (is_file($path)) @unlink($path);
+    }
+    respond(['ok' => true]);
+}
+
+if ($method === 'GET' && $action === 'meeting-picture') {
+    $meetingId = (int) ($_GET['meetingId'] ?? 0);
+    if ($meetingId <= 0) respond(['error' => 'Møde er påkrævet.'], 422);
+    $statement = $pdo->prepare(
+        'SELECT cover_image_stored_name, cover_image_mime_type, cover_image_size
+         FROM meetings WHERE id = :id AND cover_image_stored_name IS NOT NULL'
+    );
+    $statement->execute(['id' => $meetingId]);
+    $picture = $statement->fetch();
+    if (!$picture) respond(['error' => 'Mødebilledet findes ikke.'], 404);
+    $path = meetingPictureDirectory($config) . DIRECTORY_SEPARATOR . basename((string) $picture['cover_image_stored_name']);
+    if (!is_file($path)) respond(['error' => 'Mødebilledet mangler på serveren.'], 404);
+    header_remove('Content-Type');
+    header('Content-Type: ' . $picture['cover_image_mime_type']);
+    header('Content-Length: ' . (string) $picture['cover_image_size']);
+    header('Cache-Control: public, max-age=86400, immutable');
+    header('X-Content-Type-Options: nosniff');
+    session_write_close();
+    readfile($path);
+    exit;
+}
+
+if ($method === 'POST' && $action === 'admin-group-picture') {
+    requireAdmin();
+    $groupId = (int) ($_POST['groupId'] ?? 0);
+    $file = $_FILES['file'] ?? null;
+    if ($groupId <= 0 || !$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        respond(['error' => 'Vælg en gruppe og et billede.'], 422);
+    }
+    $maxSize = (int) ($config['group_picture_max_bytes'] ?? 5 * 1024 * 1024);
+    if ((int) $file['size'] <= 0 || (int) $file['size'] > $maxSize) {
+        respond(['error' => 'Billedet er tomt eller større end 5 MB.'], 422);
+    }
+    $extension = strtolower(pathinfo((string) $file['name'], PATHINFO_EXTENSION));
+    $allowed = [
+        'jpg' => ['image/jpeg'], 'jpeg' => ['image/jpeg'],
+        'png' => ['image/png'], 'webp' => ['image/webp'],
+    ];
+    if (!isset($allowed[$extension])) respond(['error' => 'Brug JPG, PNG eller WebP.'], 422);
+    $mime = (new finfo(FILEINFO_MIME_TYPE))->file((string) $file['tmp_name']) ?: 'application/octet-stream';
+    $dimensions = getimagesize((string) $file['tmp_name']);
+    if (!in_array($mime, $allowed[$extension], true) || !$dimensions) {
+        respond(['error' => 'Filen ligner ikke et gyldigt billede.'], 422);
+    }
+    $width = (int) ($dimensions[0] ?? 0);
+    $height = (int) ($dimensions[1] ?? 0);
+    if ($width < 400 || $height < 200) {
+        respond(['error' => 'Billedet skal være mindst 400 × 200 pixels.'], 422);
+    }
+    if ($width > 12000 || $height > 12000 || $width * $height > 60000000) {
+        respond(['error' => 'Billedets dimensioner er for store.'], 422);
+    }
+    $groupStatement = $pdo->prepare(
+        'SELECT id::text, cover_image_stored_name AS "coverImageStoredName"
+         FROM groups WHERE id = :id'
+    );
+    $groupStatement->execute(['id' => $groupId]);
+    $group = $groupStatement->fetch();
+    if (!$group) respond(['error' => 'Gruppen findes ikke.'], 404);
+    $directory = groupPictureDirectory($config);
+    if (!is_dir($directory) && !mkdir($directory, 0750, true) && !is_dir($directory)) {
+        respond(['error' => 'Uploadmappen kunne ikke oprettes.'], 500);
+    }
+    $directory = realpath($directory) ?: '';
+    if ($directory === '') respond(['error' => 'Uploadmappen kunne ikke valideres.'], 500);
+    $storedName = bin2hex(random_bytes(20)) . '.' . ($extension === 'jpeg' ? 'jpg' : $extension);
+    $destination = $directory . DIRECTORY_SEPARATOR . $storedName;
+    if (!move_uploaded_file((string) $file['tmp_name'], $destination)) {
+        respond(['error' => 'Billedet kunne ikke gemmes.'], 500);
+    }
+    $oldName = (string) ($group['coverImageStoredName'] ?? '');
+    try {
+        $pdo->prepare(
+            'UPDATE groups
+             SET cover_image_stored_name = :stored_name,
+                 cover_image_mime_type = :mime_type,
+                 cover_image_size = :file_size
+             WHERE id = :id'
+        )->execute([
+            'stored_name' => $storedName,
+            'mime_type' => $mime,
+            'file_size' => (int) $file['size'],
+            'id' => $groupId,
+        ]);
+    } catch (Throwable $exception) {
+        @unlink($destination);
+        throw $exception;
+    }
+    if ($oldName !== '') {
+        $oldPath = $directory . DIRECTORY_SEPARATOR . basename($oldName);
+        if (is_file($oldPath)) @unlink($oldPath);
+    }
+    $group['coverImageStoredName'] = $storedName;
+    attachGroupCoverUrl($group);
+    respond(['group' => $group]);
+}
+
+if ($method === 'POST' && $action === 'admin-delete-group-picture') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['groupId']);
+    $statement = $pdo->prepare(
+        'UPDATE groups
+         SET cover_image_stored_name = NULL, cover_image_mime_type = NULL, cover_image_size = NULL
+         WHERE id = :id RETURNING cover_image_stored_name'
+    );
+    $existing = $pdo->prepare('SELECT cover_image_stored_name FROM groups WHERE id = :id');
+    $existing->execute(['id' => (int) $body['groupId']]);
+    $storedName = $existing->fetchColumn();
+    if ($storedName === false) respond(['error' => 'Gruppen findes ikke.'], 404);
+    $statement->execute(['id' => (int) $body['groupId']]);
+    if ($storedName) {
+        $path = groupPictureDirectory($config) . DIRECTORY_SEPARATOR . basename((string) $storedName);
+        if (is_file($path)) @unlink($path);
+    }
+    respond(['ok' => true]);
+}
+
+if ($method === 'GET' && $action === 'group-picture') {
+    $groupId = (int) ($_GET['groupId'] ?? 0);
+    if ($groupId <= 0) respond(['error' => 'Gruppe er påkrævet.'], 422);
+    $statement = $pdo->prepare(
+        'SELECT cover_image_stored_name, cover_image_mime_type, cover_image_size
+         FROM groups WHERE id = :id AND cover_image_stored_name IS NOT NULL'
+    );
+    $statement->execute(['id' => $groupId]);
+    $picture = $statement->fetch();
+    if (!$picture) respond(['error' => 'Gruppebilledet findes ikke.'], 404);
+    $path = groupPictureDirectory($config) . DIRECTORY_SEPARATOR . basename((string) $picture['cover_image_stored_name']);
+    if (!is_file($path)) respond(['error' => 'Gruppebilledet mangler på serveren.'], 404);
+    header_remove('Content-Type');
+    header('Content-Type: ' . $picture['cover_image_mime_type']);
+    header('Content-Length: ' . (string) $picture['cover_image_size']);
+    header('Cache-Control: public, max-age=86400, immutable');
+    header('X-Content-Type-Options: nosniff');
+    session_write_close();
+    readfile($path);
+    exit;
+}
+
 if ($method === 'GET' && $action === 'groups') {
-    respond(['groups' => $pdo->query(
-        'SELECT g.id::text, g.name, g.address, COUNT(gm.user_id)::int AS "memberCount"
+    $groups = $pdo->query(
+        'SELECT g.id::text, g.name, g.address, g.description,
+                g.cover_image_stored_name AS "coverImageStoredName",
+                COUNT(gm.user_id)::int AS "memberCount"
          FROM groups g LEFT JOIN group_members gm ON gm.group_id = g.id
          GROUP BY g.id ORDER BY g.name'
-    )->fetchAll()]);
+    )->fetchAll();
+    attachGroupCoverUrls($groups);
+    respond(['groups' => $groups]);
 }
 
 if ($method === 'GET' && $action === 'my-groups') {
     requireLogin();
     if (($_SESSION['role'] ?? null) === 'admin') {
-        respond(['groups' => $pdo->query('SELECT id::text, name, address FROM groups ORDER BY name')->fetchAll()]);
+        $groups = $pdo->query(
+            'SELECT id::text, name, address, description,
+                    cover_image_stored_name AS "coverImageStoredName"
+             FROM groups ORDER BY name'
+        )->fetchAll();
+        attachGroupCoverUrls($groups);
+        respond(['groups' => $groups]);
     }
     $statement = $pdo->prepare(
-        'SELECT g.id::text, g.name, g.address
+        'SELECT g.id::text, g.name, g.address, g.description,
+                g.cover_image_stored_name AS "coverImageStoredName"
          FROM groups g JOIN group_members gm ON gm.group_id = g.id
          WHERE gm.user_id = :user_id ORDER BY g.name'
     );
     $statement->execute(['user_id' => $userId]);
-    respond(['groups' => $statement->fetchAll()]);
+    $groups = $statement->fetchAll();
+    attachGroupCoverUrls($groups);
+    respond(['groups' => $groups]);
 }
 
 if ($method === 'GET' && $action === 'meetings') {
     $meetings = $pdo->query(
         'SELECT m.id::text, m.slug, m.title, m.meeting_date::text AS "date",
                 to_char(m.meeting_time, \'HH24:MI\') AS "time", m.address,
+                m.cover_image_stored_name AS "coverImageStoredName",
                 CASE
                     WHEN m.status = \'cancelled\' THEN \'cancelled\'
                     WHEN (m.meeting_date + m.meeting_time) < (CURRENT_TIMESTAMP AT TIME ZONE \'Europe/Copenhagen\') THEN \'held\'
@@ -592,6 +891,7 @@ if ($method === 'GET' && $action === 'meetings') {
     )->fetchAll();
     foreach ($meetings as &$meeting) {
         $meeting['groupIds'] = json_decode((string) $meeting['groupIds'], true) ?: [];
+        attachMeetingCoverUrl($meeting);
     }
     unset($meeting);
     respond(['meetings' => $meetings]);
@@ -671,7 +971,9 @@ if ($method === 'GET' && $action === 'group-partners') {
     $groupId = (int) ($_GET['groupId'] ?? 0);
     if ($groupId <= 0) respond(['error' => 'Group is required.'], 422);
     $group = $pdo->prepare(
-        'SELECT g.id::text, g.name, g.address, COUNT(gm.user_id)::int AS "memberCount"
+        'SELECT g.id::text, g.name, g.address, g.description,
+                g.cover_image_stored_name AS "coverImageStoredName",
+                COUNT(gm.user_id)::int AS "memberCount"
          FROM groups g LEFT JOIN group_members gm ON gm.group_id = g.id
          WHERE g.id = :group_id GROUP BY g.id'
     );
@@ -692,8 +994,10 @@ if ($method === 'GET' && $action === 'group-partners') {
     $partners->execute(['group_id' => $groupId]);
     $partnerRows = $partners->fetchAll();
     attachProfilePictureUrls($partnerRows);
+    $groupRow = $group->fetch() ?: null;
+    attachGroupCoverUrl($groupRow);
     respond([
-        'group' => $group->fetch(),
+        'group' => $groupRow,
         'partners' => $partnerRows,
         'missingLabels' => missingGroupLabels($pdo, $groupId),
     ]);
@@ -1503,8 +1807,22 @@ if ($method === 'POST' && $action === 'admin-groups') {
     requireAdmin();
     $body = requestBody();
     required($body, ['name']);
-    $statement = $pdo->prepare('INSERT INTO groups (name, address) VALUES (:name, :address) RETURNING id::text, name, address');
-    $statement->execute(['name' => trim((string) $body['name']), 'address' => nullable($body, 'address')]);
+    $name = trim((string) $body['name']);
+    $address = trim((string) ($body['address'] ?? ''));
+    $description = trim((string) ($body['description'] ?? ''));
+    if (strlen($name) > 160 || strlen($address) > 300 || strlen($description) > 1200) {
+        respond(['error' => 'Navn, adresse eller beskrivelse er for lang.'], 422);
+    }
+    $statement = $pdo->prepare(
+        'INSERT INTO groups (name, address, description)
+         VALUES (:name, :address, :description)
+         RETURNING id::text, name, address, description'
+    );
+    $statement->execute([
+        'name' => $name,
+        'address' => $address !== '' ? $address : null,
+        'description' => $description !== '' ? $description : null,
+    ]);
     respond(['group' => $statement->fetch()], 201);
 }
 
@@ -1512,11 +1830,21 @@ if ($method === 'POST' && $action === 'admin-update-group') {
     requireAdmin();
     $body = requestBody();
     required($body, ['groupId', 'name']);
-    $statement = $pdo->prepare('UPDATE groups SET name = :name, address = :address WHERE id = :id RETURNING id::text, name, address');
+    $name = trim((string) $body['name']);
+    $address = trim((string) ($body['address'] ?? ''));
+    $description = trim((string) ($body['description'] ?? ''));
+    if (strlen($name) > 160 || strlen($address) > 300 || strlen($description) > 1200) {
+        respond(['error' => 'Navn, adresse eller beskrivelse er for lang.'], 422);
+    }
+    $statement = $pdo->prepare(
+        'UPDATE groups SET name = :name, address = :address, description = :description
+         WHERE id = :id RETURNING id::text, name, address, description'
+    );
     $statement->execute([
         'id' => (int) $body['groupId'],
-        'name' => trim((string) $body['name']),
-        'address' => nullable($body, 'address'),
+        'name' => $name,
+        'address' => $address !== '' ? $address : null,
+        'description' => $description !== '' ? $description : null,
     ]);
     $group = $statement->fetch();
     if (!$group) respond(['error' => 'Gruppen findes ikke.'], 404);
@@ -1527,8 +1855,15 @@ if ($method === 'POST' && $action === 'admin-delete-group') {
     requireAdmin();
     $body = requestBody();
     required($body, ['groupId']);
+    $picture = $pdo->prepare('SELECT cover_image_stored_name FROM groups WHERE id = :id');
+    $picture->execute(['id' => (int) $body['groupId']]);
+    $storedName = $picture->fetchColumn();
     $statement = $pdo->prepare('DELETE FROM groups WHERE id = :id');
     $statement->execute(['id' => (int) $body['groupId']]);
+    if ($storedName) {
+        $path = groupPictureDirectory($config) . DIRECTORY_SEPARATOR . basename((string) $storedName);
+        if (is_file($path)) @unlink($path);
+    }
     respond(['ok' => true]);
 }
 
@@ -1624,6 +1959,9 @@ if ($method === 'POST' && $action === 'admin-delete-meeting') {
     $body = requestBody();
     required($body, ['meetingId']);
     $attachmentNames = [];
+    $picture = $pdo->prepare('SELECT cover_image_stored_name FROM meetings WHERE id = :id');
+    $picture->execute(['id' => (int) $body['meetingId']]);
+    $pictureName = $picture->fetchColumn();
     try {
         $attachments = $pdo->prepare('SELECT stored_name FROM meeting_attachments WHERE meeting_id = :id');
         $attachments->execute(['id' => (int) $body['meetingId']]);
@@ -1640,6 +1978,10 @@ if ($method === 'POST' && $action === 'admin-delete-meeting') {
         if (is_file($path)) {
             @unlink($path);
         }
+    }
+    if ($pictureName) {
+        $picturePath = meetingPictureDirectory($config) . DIRECTORY_SEPARATOR . basename((string) $pictureName);
+        if (is_file($picturePath)) @unlink($picturePath);
     }
     respond(['ok' => true]);
 }

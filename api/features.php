@@ -142,7 +142,9 @@ if ($method === 'GET' && $action === 'admin-group-detail') {
     requireAdmin();
     $groupId = (int) ($_GET['groupId'] ?? 0);
     $group = $pdo->prepare(
-        'SELECT g.id::text, g.name, g.address, COUNT(gm.user_id)::int AS "memberCount"
+        'SELECT g.id::text, g.name, g.address, g.description,
+                g.cover_image_stored_name AS "coverImageStoredName",
+                COUNT(gm.user_id)::int AS "memberCount"
          FROM groups g LEFT JOIN group_members gm ON gm.group_id = g.id
          WHERE g.id = :group_id GROUP BY g.id'
     );
@@ -158,8 +160,10 @@ if ($method === 'GET' && $action === 'admin-group-detail') {
          ORDER BY COALESCE(p.name, u.email)'
     );
     $members->execute(['group_id' => $groupId]);
+    $groupRow = $group->fetch() ?: null;
+    attachGroupCoverUrl($groupRow);
     respond([
-        'group' => $group->fetch() ?: null,
+        'group' => $groupRow,
         'members' => $members->fetchAll(),
         'missingLabels' => missingGroupLabels($pdo, $groupId),
     ]);

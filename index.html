@@ -59,18 +59,45 @@
   }
 
   .mobile-section-tabs {
-    display: none;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: min(100%, 360px);
+    margin: 0 0 26px;
+    padding: 4px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #fff;
+  }
+
+  .mobile-section-tabs button {
+    min-height: 44px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--navy);
+    cursor: pointer;
+    font: inherit;
+    font-weight: bold;
+  }
+
+  .mobile-section-tabs button.active {
+    background: var(--green);
+    color: #fff;
   }
 
   .portal-grid {
     display: grid;
-    grid-template-columns: minmax(0, .95fr) minmax(0, 1.15fr);
-    gap: 32px;
+    grid-template-columns: 1fr;
+    gap: 38px;
   }
 
   .portal-panel {
+    display: none;
     min-width: 0;
   }
+
+  .portal-panel.active-mobile-panel { display: block; }
 
   .portal-heading {
     margin: 0 0 16px;
@@ -87,42 +114,76 @@
 
   .meeting-list {
     grid-column: 1 / -1;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   }
 
   .group-list {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     margin-top: 0;
   }
 
   .group-card {
-    display: grid;
-    grid-template-columns: 56px minmax(0, 1fr);
-    gap: 16px;
-    align-items: center;
-    padding: 18px;
+    display: flex;
+    min-height: 350px;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0;
     border: 1px solid var(--line);
-    border-radius: 8px;
+    border-radius: 14px;
     background: var(--surface);
     color: inherit;
     text-decoration: none;
-    transition: transform .15s ease, box-shadow .15s ease;
+    box-shadow: 0 2px 7px rgba(21, 36, 58, .07);
+    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
   }
 
   a.group-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 18px rgba(0, 0, 0, .08);
+    transform: translateY(-4px);
+    border-color: #b9c7db;
+    box-shadow: 0 12px 28px rgba(21, 36, 58, .13);
   }
 
-  .group-avatar {
+  .group-cover {
     display: flex;
-    width: 56px;
-    height: 56px;
+    width: 100%;
+    aspect-ratio: 16 / 8.5;
     align-items: center;
     justify-content: center;
-    border-radius: 50%;
-    background: var(--green);
+    overflow: hidden;
+    background: linear-gradient(135deg, #163674 0%, #5677a7 55%, #9badc6 100%);
     color: #fff;
-    font-size: 22px;
+    font-size: 38px;
     font-weight: bold;
+  }
+
+  .group-card:nth-child(4n + 2) .group-cover {
+    background: linear-gradient(145deg, #456947 0%, #91ae7d 56%, #dce8c5 100%);
+  }
+
+  .group-card:nth-child(4n + 3) .group-cover {
+    background: linear-gradient(145deg, #382044 0%, #ad6259 56%, #efba72 100%);
+  }
+
+  .group-card:nth-child(4n + 4) .group-cover {
+    background: linear-gradient(145deg, #644239 0%, #b88d70 56%, #e9d7c2 100%);
+  }
+
+  .group-cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform .3s ease;
+  }
+
+  a.group-card:hover .group-cover img {
+    transform: scale(1.025);
+  }
+
+  .group-card-body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    padding: 18px 20px 16px;
   }
 
   .group-card h3,
@@ -132,7 +193,41 @@
   }
 
   .group-card h3 {
+    color: var(--navy);
+    font-size: 19px;
+    line-height: 1.25;
+  }
+
+  .group-location {
+    min-height: 20px;
+  }
+
+  .group-location::before {
+    content: "⌖";
+    margin-right: 5px;
     color: var(--green);
+    font-weight: bold;
+  }
+
+  .group-description {
+    display: -webkit-box;
+    overflow: hidden;
+    margin: 10px 0 16px;
+    color: #445169;
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
+  }
+
+  .group-card-footer {
+    margin-top: auto;
+    padding-top: 12px;
+    border-top: 1px solid #e8edf3;
+    color: var(--green);
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: .2px;
   }
 
   .portal-meta {
@@ -180,21 +275,166 @@
     color: #fff;
   }
 
-  .meeting {
-    padding: 17px 18px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
-    background: var(--surface);
+  .month-filter-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin: -6px 0 18px;
   }
 
-  .meeting-topline {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
+  .month-browser {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+  }
+
+  .month-filters {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(78px, auto));
+    gap: 7px;
+    min-width: 0;
+  }
+
+  .month-filter {
+    min-width: 58px;
+    padding: 7px 11px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--navy);
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+    text-transform: capitalize;
+  }
+
+  .month-filter:hover,
+  .month-filter.active {
+    border-color: var(--green);
+    background: var(--green);
+    color: #fff;
+  }
+
+  .month-arrow {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    background: #fff;
+    color: var(--navy);
+    cursor: pointer;
+    font: inherit;
+    font-size: 22px;
+    line-height: 1;
+  }
+
+  .month-arrow:hover:not(:disabled) {
+    border-color: var(--green);
+    background: var(--green);
+    color: #fff;
+  }
+
+  .month-arrow:disabled {
+    cursor: default;
+    opacity: .35;
+  }
+
+  .meeting {
+    position: relative;
+    display: block;
+    min-height: 300px;
+    overflow: hidden;
+    border: 1px solid #cbd4df;
+    border-radius: 14px;
+    background: linear-gradient(145deg, #173663, #6885aa 58%, #c4cedc);
+    color: #fff;
+    text-decoration: none;
+    box-shadow: 0 3px 10px rgba(21, 36, 58, .12);
+    transition: transform .18s ease, box-shadow .18s ease;
+  }
+
+  .meeting:nth-child(3n + 2) { background: linear-gradient(145deg, #395f46, #86a37e 58%, #dce8c5); }
+  .meeting:nth-child(3n + 3) { background: linear-gradient(145deg, #4a284d, #a75e59 58%, #e7ad71); }
+
+  .meeting:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 14px 30px rgba(21, 36, 58, .2);
+  }
+
+  .meeting[hidden] { display: none; }
+
+  .meeting-image,
+  .meeting-shade {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .meeting-image {
+    object-fit: cover;
+    transition: transform .35s ease;
+  }
+
+  .meeting:hover .meeting-image { transform: scale(1.035); }
+
+  .meeting-shade {
+    background: linear-gradient(180deg, rgba(8, 19, 34, .18) 0%, rgba(8, 19, 34, .18) 34%, rgba(8, 19, 34, .88) 100%);
+  }
+
+  .meeting-date {
+    position: absolute;
+    z-index: 2;
+    top: 16px;
+    left: 16px;
+    display: grid;
+    min-width: 62px;
+    padding: 8px 10px;
+    border: 1px solid rgba(255,255,255,.55);
+    border-radius: 10px;
+    background: rgba(255,255,255,.94);
+    color: var(--navy);
+    line-height: 1;
+    text-align: center;
+    box-shadow: 0 4px 14px rgba(0,0,0,.14);
+  }
+
+  .meeting-date strong { font-size: 23px; }
+  .meeting-date span { margin-top: 4px; font-size: 10px; font-weight: bold; letter-spacing: .7px; text-transform: uppercase; }
+
+  .meeting-content {
+    position: absolute;
+    z-index: 2;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    padding: 74px 18px 18px;
+  }
+
+  .meeting-content h3 {
+    margin: 0 0 8px;
+    color: #fff;
+    font-size: 21px;
+    line-height: 1.22;
+    text-shadow: 0 2px 10px rgba(0,0,0,.5);
+  }
+
+  .meeting-content p {
+    margin: 4px 0 0;
+    color: rgba(255,255,255,.9);
+    font-size: 13px;
+    line-height: 1.4;
   }
 
   .status {
+    position: absolute;
+    z-index: 2;
+    top: 16px;
+    right: 16px;
     flex-shrink: 0;
     padding: 4px 8px;
     border-radius: 20px;
@@ -204,19 +444,40 @@
     text-transform: uppercase;
   }
 
-  .upcoming { background: #e5f4ef; color: var(--green); }
-  .held { background: #edf0f2; color: #58636c; }
-  .cancelled { background: #fbe8e8; color: #a63a3a; }
+  .upcoming { background: rgba(229,244,239,.95); color: var(--green); }
+  .held { background: rgba(237,240,242,.95); color: #58636c; }
+  .cancelled { background: rgba(251,232,232,.96); color: #a63a3a; }
+
+  .pagination {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    align-items: center;
+    min-height: 42px;
+    margin-top: 20px;
+  }
+
+  .pagination:empty { display: none; }
+
+  .pagination button {
+    min-height: 38px;
+    padding: 8px 13px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: #fff;
+    color: var(--navy);
+    cursor: pointer;
+    font: inherit;
+  }
+
+  .pagination button:disabled { opacity: .45; cursor: default; }
+  .pagination-status { min-width: 92px; color: var(--muted); font-size: 13px; text-align: center; }
 
   @media (max-width: 800px) {
-    .portal-grid {
-      grid-template-columns: 1fr;
-      gap: 34px;
-    }
+    .portal-grid { gap: 34px; }
 
-    .group-list {
-      margin-top: 0;
-    }
+    .group-list,
+    .meeting-list { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 0; }
   }
 
   @media (max-width: 700px) {
@@ -247,31 +508,9 @@
     }
 
     .mobile-section-tabs {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
       margin: 0 0 18px;
-      padding: 4px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #fff;
       width: 100%;
       max-width: 100%;
-    }
-
-    .mobile-section-tabs button {
-      min-height: 44px;
-      border: 0;
-      border-radius: 6px;
-      background: transparent;
-      color: var(--navy);
-      font: inherit;
-      font-weight: bold;
-    }
-
-    .mobile-section-tabs button.active {
-      background: var(--green);
-      color: #fff;
     }
 
     .portal-grid {
@@ -304,19 +543,15 @@
     .meeting {
       width: 100%;
       max-width: 100%;
-      padding: 16px;
     }
+
+    .group-card { min-height: 0; padding: 0; }
+    .meeting { min-height: 270px; padding: 0; }
 
     .group-card h3,
     .meeting h3,
     .portal-meta {
       overflow-wrap: anywhere;
-    }
-
-    .meeting-topline {
-      align-items: flex-start;
-      flex-direction: column;
-      gap: 6px;
     }
 
     .filters {
@@ -336,6 +571,14 @@
     .filter-select {
       grid-column: 1 / -1;
     }
+
+    .group-list,
+    .meeting-list { grid-template-columns: 1fr; }
+
+    .month-filter-row { align-items: stretch; }
+    .month-browser { flex: 1; }
+    .month-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .month-filter { min-width: 0; padding-inline: 8px; white-space: nowrap; }
   }
 </style>
 </head>
@@ -348,19 +591,20 @@
     <p class="portal-description">Find dine netværksgrupper og hold dig opdateret om kommende møder.</p>
   </header>
 
-  <div class="mobile-section-tabs" aria-label="Vælg indhold">
-    <button class="active" type="button" data-mobile-section="groups">Grupper</button>
-    <button type="button" data-mobile-section="meetings">Møder</button>
+  <div class="mobile-section-tabs" role="tablist" aria-label="Vælg indhold">
+    <button class="active" type="button" role="tab" aria-selected="true" aria-controls="groups-panel" data-mobile-section="groups">Grupper</button>
+    <button type="button" role="tab" aria-selected="false" aria-controls="meetings-panel" data-mobile-section="meetings">Møder</button>
   </div>
 
   <div class="portal-grid">
-    <section class="portal-panel active-mobile-panel" data-mobile-panel="groups">
+    <section class="portal-panel active-mobile-panel" id="groups-panel" role="tabpanel" data-mobile-panel="groups">
       <h2 class="portal-heading">Grupper</h2>
 
       <div class="group-list" id="group-list"></div>
+      <nav class="pagination" id="group-pagination" aria-label="Gruppesider"></nav>
     </section>
 
-    <section class="portal-panel" data-mobile-panel="meetings">
+    <section class="portal-panel" id="meetings-panel" role="tabpanel" data-mobile-panel="meetings" hidden>
       <h2 class="portal-heading">Årets møder</h2>
 
       <div class="filters">
@@ -372,23 +616,61 @@
           <option value="">Alle grupper</option>
         </select>
       </div>
+      <div class="month-filter-row" aria-label="Filtrer møder efter måned">
+        <button class="month-filter active" id="all-months-filter" type="button" data-month="all">Alle måneder</button>
+        <div class="month-browser">
+          <button class="month-arrow" id="month-prev" type="button" aria-label="Vis tidligere måneder">&#8249;</button>
+          <div class="month-filters" id="meeting-month-filters"></div>
+          <button class="month-arrow" id="month-next" type="button" aria-label="Vis næste måneder">&#8250;</button>
+        </div>
+      </div>
 
       <div class="meeting-list" id="meeting-list"></div>
+      <nav class="pagination" id="meeting-pagination" aria-label="Mødesider"></nav>
     </section>
   </div>
 </div>
 
-<script src="portal-data.js?v=20260811-02"></script><script src="portal-header.js?v=20260811-04"></script>
+<script src="portal-data.js?v=20261012-02"></script><script src="portal-header.js?v=20260811-04"></script>
 <script>
   var statusLabels = { upcoming: "Kommende", held: "Afholdt", cancelled: "Aflyst" };
   var selectedMeetingStatus = "all";
+  var selectedMeetingMonth = "all";
+  var meetingMonthKeys = [], monthWindowStart = 0;
+  var pageSize = 8, groupPage = 1, meetingPage = 1, groupRows = [], allowedGroupIds = [];
+  function monthWindowSize() {
+    return window.matchMedia("(max-width: 700px)").matches ? 2 : 6;
+  }
   function setMobileSection(section) {
     document.querySelectorAll("[data-mobile-section]").forEach(function (button) {
-      button.classList.toggle("active", button.dataset.mobileSection === section);
+      var active = button.dataset.mobileSection === section;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
     });
     document.querySelectorAll("[data-mobile-panel]").forEach(function (panel) {
-      panel.classList.toggle("active-mobile-panel", panel.dataset.mobilePanel === section);
+      var active = panel.dataset.mobilePanel === section;
+      panel.classList.toggle("active-mobile-panel", active);
+      panel.hidden = !active;
     });
+  }
+  function renderPagination(id, currentPage, totalItems, changePage) {
+    var target = document.getElementById(id), totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+    if (totalItems <= pageSize) { target.innerHTML = ""; return; }
+    target.innerHTML = '<button type="button" data-page="prev" '+(currentPage<=1?'disabled':'')+'>Forrige</button><span class="pagination-status">Side '+currentPage+' af '+totalPages+'</span><button type="button" data-page="next" '+(currentPage>=totalPages?'disabled':'')+'>Næste</button>';
+    target.querySelectorAll("[data-page]").forEach(function (button) {
+      button.onclick = function () { changePage(currentPage + (button.dataset.page === "next" ? 1 : -1)); };
+    });
+  }
+  function renderGroupPage() {
+    var totalPages = Math.max(1, Math.ceil(groupRows.length / pageSize));
+    groupPage = Math.min(Math.max(1, groupPage), totalPages);
+    var visible = groupRows.slice((groupPage - 1) * pageSize, groupPage * pageSize);
+    document.getElementById("group-list").innerHTML = visible.length ? visible.map(function(group) {
+      var cover=group.coverImageUrl?'<img src="'+PortalData.escape(group.coverImageUrl)+'" alt="" loading="lazy" decoding="async">':'<span aria-hidden="true">'+PortalData.escape((group.name||"G").charAt(0).toUpperCase())+'</span>';
+      var body='<span class="group-cover">'+cover+'</span><span class="group-card-body"><h3>'+PortalData.escape(group.name)+'</h3>'+(group.address?'<p class="portal-meta group-location">'+PortalData.escape(group.address)+'</p>':'')+(group.description?'<p class="group-description">'+PortalData.escape(group.description)+'</p>':'<p class="group-description">Læs mere om gruppen og se dens medlemmer.</p>')+'<span class="group-card-footer">'+PortalData.escape(String(group.memberCount||0))+' '+(Number(group.memberCount)===1?'medlem':'medlemmer')+'</span></span>';
+      return allowedGroupIds.includes(group.id)?'<a href="gruppe.html?id='+encodeURIComponent(group.id)+'" class="group-card">'+body+'</a>':'<article class="group-card">'+body+'</article>';
+    }).join(""):'<p class="portal-meta">Der er ingen grupper endnu.</p>';
+    renderPagination("group-pagination", groupPage, groupRows.length, function(page) { groupPage = page; renderGroupPage(); });
   }
   function effectiveMeetingStatus(meeting) {
     if (meeting.status === "cancelled") return "cancelled";
@@ -411,38 +693,98 @@
       return aUpcoming ? meetingStart(a) - meetingStart(b) : meetingStart(b) - meetingStart(a);
     });
   }
-  function applyMeetingFilters() {
+  function applyMeetingFilters(resetPage) {
+    if (resetPage) meetingPage = 1;
     var groupId = document.getElementById("meeting-group-filter").value;
+    var matches = [];
     document.querySelectorAll(".partner-portal .meeting").forEach(function (meeting) {
       var statusMatch = selectedMeetingStatus === "all" || meeting.dataset.status === selectedMeetingStatus;
+      var monthMatch = selectedMeetingMonth === "all" || meeting.dataset.month === selectedMeetingMonth;
       var groupIds = (meeting.dataset.groupIds || "").split(",").filter(Boolean);
       var groupMatch = !groupId || groupIds.includes(groupId);
-      meeting.style.display = statusMatch && groupMatch ? "block" : "none";
+      if (statusMatch && monthMatch && groupMatch) matches.push(meeting);
+    });
+    var totalPages = Math.max(1, Math.ceil(matches.length / pageSize));
+    meetingPage = Math.min(Math.max(1, meetingPage), totalPages);
+    document.querySelectorAll(".partner-portal .meeting").forEach(function (meeting) { meeting.hidden = true; });
+    matches.slice((meetingPage - 1) * pageSize, meetingPage * pageSize).forEach(function (meeting) { meeting.hidden = false; });
+    renderPagination("meeting-pagination", meetingPage, matches.length, function(page) { meetingPage = page; applyMeetingFilters(false); });
+  }
+  function renderMeetingMonthFilters(meetings) {
+    if (meetings) {
+      meetingMonthKeys = Array.from(new Set(meetings.map(function (meeting) { return String(meeting.date || "").slice(0, 7); }).filter(Boolean))).sort();
+    }
+    if (selectedMeetingMonth !== "all" && !meetingMonthKeys.includes(selectedMeetingMonth)) selectedMeetingMonth = "all";
+    var windowSize = monthWindowSize();
+    var maxStart = Math.max(0, meetingMonthKeys.length - windowSize);
+    monthWindowStart = Math.min(Math.max(0, monthWindowStart), maxStart);
+    var buttons = [];
+    meetingMonthKeys.slice(monthWindowStart, monthWindowStart + windowSize).forEach(function (key) {
+      var date = new Date(key + "-01T00:00:00");
+      var label = date.toLocaleDateString("da-DK", { month:"short", year:windowSize === 2 ? "2-digit" : "numeric" });
+      buttons.push('<button class="month-filter'+(selectedMeetingMonth===key?' active':'')+'" type="button" data-month="'+PortalData.escape(key)+'">'+PortalData.escape(label)+'</button>');
+    });
+    document.getElementById("meeting-month-filters").innerHTML = buttons.join("");
+    document.getElementById("all-months-filter").classList.toggle("active", selectedMeetingMonth === "all");
+    var previous = document.getElementById("month-prev"), next = document.getElementById("month-next");
+    previous.disabled = monthWindowStart === 0;
+    next.disabled = monthWindowStart + windowSize >= meetingMonthKeys.length;
+    previous.hidden = next.hidden = meetingMonthKeys.length <= windowSize;
+    document.querySelectorAll("#meeting-month-filters [data-month]").forEach(function (button) {
+      button.onclick = function () {
+        selectedMeetingMonth = button.dataset.month;
+        renderMeetingMonthFilters();
+        applyMeetingFilters(true);
+      };
     });
   }
+  document.getElementById("all-months-filter").onclick = function () {
+    selectedMeetingMonth = "all";
+    renderMeetingMonthFilters();
+    applyMeetingFilters(true);
+  };
+  document.getElementById("month-prev").onclick = function () {
+    monthWindowStart -= monthWindowSize();
+    renderMeetingMonthFilters();
+  };
+  document.getElementById("month-next").onclick = function () {
+    monthWindowStart += monthWindowSize();
+    renderMeetingMonthFilters();
+  };
+  var lastMonthWindowSize = monthWindowSize();
+  window.addEventListener("resize", function () {
+    var currentSize = monthWindowSize();
+    if (currentSize !== lastMonthWindowSize) {
+      lastMonthWindowSize = currentSize;
+      renderMeetingMonthFilters();
+    }
+  });
   Promise.all([PortalData.groups(), PortalData.session()]).then(async function (results) {
     var groups = results[0], session = results[1];
-    var allowed = session.loggedIn ? groups.map(function (group) { return group.id; }) : [];
+    groupRows = groups;
+    allowedGroupIds = session.loggedIn ? groups.map(function (group) { return group.id; }) : [];
     document.getElementById("meeting-group-filter").innerHTML = '<option value="">Alle grupper</option>' + groups.map(function (group) {
       return '<option value="' + PortalData.escape(group.id) + '">' + PortalData.escape(group.name) + '</option>';
     }).join("");
-    document.getElementById("group-list").innerHTML = groups.map(function(group,index) {
-      var tag = allowed.includes(group.id) ? 'a href="gruppe.html?id='+encodeURIComponent(group.id)+'"' : "div";
-      return '<'+tag+' class="group-card"><span class="group-avatar">'+(index+1)+'</span><span><h3>'+PortalData.escape(group.name)+'</h3><p class="portal-meta">'+PortalData.escape(group.address||"")+'</p></span></'+(tag.startsWith("a ")?"a":"div")+'>';
-    }).join("");
-    applyMeetingFilters();
+    renderGroupPage();
+    applyMeetingFilters(true);
   });
   PortalData.meetings().then(function (meetings) {
-    document.getElementById("meeting-list").innerHTML = sortMeetings(meetings).map(function (meeting) {
-    var status = effectiveMeetingStatus(meeting);
-    var date = new Date(meeting.date + "T00:00:00").toLocaleDateString("da-DK", { day: "numeric", month: "long", year: "numeric" });
+    var sorted = sortMeetings(meetings);
+    renderMeetingMonthFilters(sorted);
+    document.getElementById("meeting-list").innerHTML = sorted.length ? sorted.map(function (meeting) {
+      var status = effectiveMeetingStatus(meeting);
+      var dateObject = new Date(meeting.date + "T00:00:00");
+      var day = dateObject.toLocaleDateString("da-DK", { day:"numeric" });
+      var month = dateObject.toLocaleDateString("da-DK", { month:"short" }).replace(".", "");
+      var fullDate = dateObject.toLocaleDateString("da-DK", { day:"numeric", month:"long", year:"numeric" });
       var groupIds = (meeting.groupIds || []).map(String).join(",");
-      return '<a class="meeting" data-status="' + PortalData.escape(status) + '" data-group-ids="' + PortalData.escape(groupIds) + '" href="moede.html?id=' + encodeURIComponent(meeting.slug) + '" style="display:block;color:inherit;text-decoration:none">' +
-        '<div class="meeting-topline"><h3>' + PortalData.escape(meeting.title) + '</h3><span class="status ' + PortalData.escape(status) + '">' + PortalData.escape(statusLabels[status] || status) + '</span></div>' +
-        '<p class="portal-meta">' + date + ' &middot; kl. ' + PortalData.escape(meeting.time) + '</p>' +
-        (meeting.groupNames ? '<p class="portal-meta">' + PortalData.escape(meeting.groupNames) + '</p>' : '') +
-        '<p class="portal-meta">' + PortalData.escape(meeting.address) + '</p></a>';
-    }).join("");
+      var image = meeting.coverImageUrl ? '<img class="meeting-image" src="'+PortalData.escape(meeting.coverImageUrl)+'" alt="" loading="lazy" decoding="async">' : '';
+      return '<a class="meeting" data-status="' + PortalData.escape(status) + '" data-month="'+PortalData.escape(String(meeting.date||"").slice(0,7))+'" data-group-ids="' + PortalData.escape(groupIds) + '" href="moede.html?id=' + encodeURIComponent(meeting.slug) + '">' + image +
+        '<span class="meeting-shade"></span><span class="meeting-date" aria-label="'+PortalData.escape(fullDate)+'"><strong>'+PortalData.escape(day)+'</strong><span>'+PortalData.escape(month)+'</span></span>' +
+        '<span class="status ' + PortalData.escape(status) + '">' + PortalData.escape(statusLabels[status] || status) + '</span>' +
+        '<span class="meeting-content"><h3>' + PortalData.escape(meeting.title) + '</h3><p>kl. ' + PortalData.escape(meeting.time) + (meeting.groupNames?' · '+PortalData.escape(meeting.groupNames):'') + '</p><p>' + PortalData.escape(meeting.address) + '</p></span></a>';
+    }).join("") : '<p class="portal-meta">Der er ingen møder endnu.</p>';
     applyMeetingFilters();
   }).catch(function () {
     document.getElementById("meeting-list").innerHTML = '<p class="portal-meta">Møder kunne ikke hentes fra databasen.</p>';
@@ -455,10 +797,10 @@
         item.classList.remove("active");
       });
       button.classList.add("active");
-      applyMeetingFilters();
+      applyMeetingFilters(true);
     });
   });
-  document.getElementById("meeting-group-filter").addEventListener("change", applyMeetingFilters);
+  document.getElementById("meeting-group-filter").addEventListener("change", function () { applyMeetingFilters(true); });
   document.querySelectorAll("[data-mobile-section]").forEach(function (button) {
     button.addEventListener("click", function () {
       setMobileSection(button.dataset.mobileSection);

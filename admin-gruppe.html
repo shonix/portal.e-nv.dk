@@ -12,6 +12,7 @@
     h1{margin:10px 0 6px}.meta{color:var(--muted)}
     .panel{margin-top:18px;padding:20px;border:1px solid var(--line);border-radius:8px;background:#fff}
     .toolbar{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end}
+    .group-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}.group-fields .wide{grid-column:1/-1}
     label{display:block;color:var(--muted);font-size:13px;font-weight:bold}
     input,select,textarea{width:100%;margin-top:5px;padding:10px;border:1px solid var(--line);border-radius:5px;font:inherit}
     textarea{min-height:95px;resize:vertical}button{padding:9px 13px;border:1px solid var(--line);border-radius:5px;background:#fff;cursor:pointer}
@@ -22,7 +23,9 @@
     .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.notice{color:var(--green)}.notice.warning{color:var(--danger)}
     .missing-inline{margin:18px 0 0;padding-top:18px;border-top:1px solid var(--line)}.missing-title{margin:0 0 10px;color:var(--muted);font-size:13px;font-weight:bold}
     .tag-list{display:flex;flex-wrap:wrap;gap:8px}.tag{display:inline-flex;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--green);font-size:13px;font-weight:bold}
-    @media(max-width:700px){.toolbar{grid-template-columns:1fr}.member,.bulletin{grid-template-columns:1fr}}
+    .cover-editor{display:grid;grid-template-columns:minmax(220px,340px) minmax(0,1fr);gap:18px;align-items:start;margin-top:20px;padding-top:20px;border-top:1px solid var(--line)}
+    .cover-preview{display:flex;aspect-ratio:16/8;align-items:center;justify-content:center;overflow:hidden;border-radius:8px;background:linear-gradient(135deg,#163674,#6d85ab);color:#fff}.cover-preview img{width:100%;height:100%;object-fit:cover}.cover-placeholder{padding:20px;text-align:center;font-weight:bold}.cover-actions{display:flex;flex-direction:column;align-items:flex-start;gap:10px}.cover-actions label{width:100%}.cover-actions input[type="file"]{padding:8px}.cover-buttons{display:flex;flex-wrap:wrap;gap:8px}.help{margin:0;color:var(--muted);font-size:13px;line-height:1.45}
+    [hidden]{display:none!important}@media(max-width:700px){.toolbar,.group-fields,.cover-editor{grid-template-columns:1fr}.member,.bulletin{grid-template-columns:1fr}.group-fields .wide{grid-column:auto}}
   </style>
 </head>
 <body>
@@ -30,6 +33,24 @@
   <a href="admin-grupper.html">&larr; Grupper</a>
   <h1 id="title">Henter gruppe...</h1>
   <p class="meta" id="intro"></p>
+  <form class="panel" id="group-edit">
+    <h2>Gruppeoplysninger</h2>
+    <div class="group-fields">
+      <label>Navn<input name="name" maxlength="160" required></label>
+      <label>Adresse<input name="address" maxlength="300" placeholder="Adresse eller by"></label>
+      <label class="wide">Kort beskrivelse<textarea name="description" maxlength="1200" placeholder="Fortæl kort hvad gruppen er, og hvem den er for"></textarea></label>
+    </div>
+    <button class="primary" type="submit">Gem oplysninger</button>
+    <div class="cover-editor">
+      <div class="cover-preview"><img id="group-cover-preview" alt="" hidden><span class="cover-placeholder" id="group-cover-placeholder">Intet gruppebillede endnu</span></div>
+      <div class="cover-actions">
+        <label>Gruppebillede<input id="group-cover-input" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"></label>
+        <p class="help">JPG, PNG eller WebP. Mindst 400 × 200 pixels og maks. 5 MB. Et bredt billede fungerer bedst.</p>
+        <div class="cover-buttons"><button class="primary" type="button" id="upload-group-cover">Upload billede</button><button class="danger" type="button" id="remove-group-cover" hidden>Fjern billede</button></div>
+      </div>
+    </div>
+    <p class="notice" id="group-notice" role="status"></p>
+  </form>
   <section class="panel">
     <h2>Opslagstavle</h2>
     <form id="bulletin-form">
@@ -58,7 +79,7 @@
     </div>
   </section>
 </main>
-<script src="portal-data.js?v=20260811-01"></script>
+<script src="portal-data.js?v=20261012-01"></script>
 <script src="portal-header.js?v=20260811-04"></script>
 <script>
 var groupId=new URLSearchParams(location.search).get("id"),detail=null,allUsers=[];
@@ -67,9 +88,12 @@ function renderCandidates(){var memberIds=(detail.members||[]).map(function(m){r
 function renderMissingLabels(){var rows=detail.missingLabels||[],target=document.getElementById("missing-labels");target.innerHTML=rows.length?'<div class="tag-list">'+rows.map(function(label){return'<span class="tag">'+PortalData.escape(label.name)+'</span>'}).join("")+'</div>':'<p class="meta">Alle oprettede brancher er repræsenteret i gruppen.</p>'}
 function render(){title.textContent=detail.group.name;intro.textContent=detail.group.address||"";members.innerHTML=detail.members.length?detail.members.map(function(m){var profile=m.profileId?'<a href="partner-profil.html?id='+m.profileId+'">'+PortalData.escape(m.profileName||"Profil")+'</a>':'<span class="danger">Profil mangler</span>';return'<div class="member"><span><strong>'+PortalData.escape(m.profileName||m.email)+'</strong><br><span class="meta">'+PortalData.escape(m.company||"")+(m.company?" · ":"")+PortalData.escape(m.email)+' · '+PortalData.escape(m.role)+'</span><br>'+profile+'</span><span class="actions"><a href="admin-bruger.html?id='+m.id+'">Rediger bruger</a><button class="danger" data-remove="'+m.id+'">Fjern</button></span></div>'}).join(""):'<p class="meta">Gruppen har ingen medlemmer.</p>';document.querySelectorAll("[data-remove]").forEach(function(u){u.onclick=async function(){if(confirm("Fjern brugeren fra gruppen?")){await PortalData.changeGroupMember({groupId:groupId,userId:u.dataset.remove,operation:"remove"});load()}}});renderCandidates()}
 async function loadBulletins(){var rows=await PortalData.groupBulletins(groupId);bulletins.innerHTML=rows.length?rows.map(function(b){var sender=b.createdByName||b.createdByEmail||"Ukendt afsender";return'<div class="bulletin"><span><span class="meta">'+PortalData.escape(formatDate(b.createdAt))+' · Afsender: '+PortalData.escape(sender)+'</span><p>'+PortalData.escape(b.message)+'</p></span><button class="danger" data-delete-bulletin="'+b.id+'">Slet</button></div>'}).join(""):'<p class="meta">Der er ingen opslag endnu.</p>';document.querySelectorAll("[data-delete-bulletin]").forEach(function(button){button.onclick=async function(){if(confirm("Slet opslaget?")){await PortalData.deleteGroupBulletin(button.dataset.deleteBulletin);loadBulletins()}}})}
-function renderEditor(){var form=document.getElementById("group-edit");if(!form){form=document.createElement("form");form.id="group-edit";form.className="panel";form.innerHTML='<h2>Gruppeoplysninger</h2><div class="toolbar"><label>Navn<input name="name" required></label><label>Adresse<input name="address"></label><button class="primary">Gem</button></div><p class="notice"></p>';document.querySelector("main").insertBefore(form,document.querySelector("main .panel"));form.onsubmit=async function(e){e.preventDefault();var message=form.querySelector(".notice");try{await PortalData.updateGroup({groupId:groupId,name:form.elements.name.value,address:form.elements.address.value});message.textContent="Gruppen er gemt.";await load()}catch(x){message.textContent=x.message}}}form.elements.name.value=detail.group.name||"";form.elements.address.value=detail.group.address||""}
+function renderEditor(){var form=document.getElementById("group-edit"),image=document.getElementById("group-cover-preview"),placeholder=document.getElementById("group-cover-placeholder"),remove=document.getElementById("remove-group-cover");form.elements.name.value=detail.group.name||"";form.elements.address.value=detail.group.address||"";form.elements.description.value=detail.group.description||"";if(detail.group.coverImageUrl){image.src=detail.group.coverImageUrl;image.hidden=false;placeholder.hidden=true;remove.hidden=false}else{image.removeAttribute("src");image.hidden=true;placeholder.hidden=false;remove.hidden=true}}
 async function load(){detail=await PortalData.groupDetail(groupId);if(!detail.group)throw new Error("Gruppen findes ikke.");renderEditor();renderMissingLabels();render();loadBulletins()}
 PortalData.requireSession("admin").then(async function(){allUsers=(await PortalData.adminUsers({page:1,pageSize:500})).users;load()}).catch(function(x){intro.textContent=x.message});
+document.getElementById("group-edit").onsubmit=async function(e){e.preventDefault();var form=this,message=document.getElementById("group-notice"),button=form.querySelector('button[type="submit"]');message.textContent="";button.disabled=true;try{await PortalData.updateGroup({groupId:groupId,name:form.elements.name.value,address:form.elements.address.value,description:form.elements.description.value});message.textContent="Gruppeoplysningerne er gemt.";await load()}catch(x){message.textContent=x.message}finally{button.disabled=false}};
+document.getElementById("upload-group-cover").onclick=async function(){var input=document.getElementById("group-cover-input"),message=document.getElementById("group-notice"),button=this,file=input.files[0];if(!file){message.textContent="Vælg et billede først.";return}message.textContent="Uploader billede...";button.disabled=true;try{await PortalData.uploadGroupPicture(groupId,file);input.value="";message.textContent="Gruppebilledet er uploadet.";await load()}catch(x){message.textContent=x.message}finally{button.disabled=false}};
+document.getElementById("remove-group-cover").onclick=async function(){if(!confirm("Fjern gruppebilledet?"))return;var message=document.getElementById("group-notice"),button=this;button.disabled=true;try{await PortalData.deleteGroupPicture(groupId);message.textContent="Gruppebilledet er fjernet.";await load()}catch(x){message.textContent=x.message}finally{button.disabled=false}};
 search.oninput=renderCandidates;add.onclick=async function(){if(!candidate.value)return;await PortalData.changeGroupMember({groupId:groupId,userId:candidate.value,operation:"add"});notice.textContent="Medlemmet er tilføjet.";load()};
 document.getElementById("bulletin-form").onsubmit=async function(e){e.preventDefault();var form=this,message=document.getElementById("bulletin-notice"),button=form.querySelector('button[type="submit"]'),sendEmail=form.elements.sendEmail.checked;message.className="notice";message.textContent="";button.disabled=true;button.textContent=sendEmail?"Gemmer og sender...":"Gemmer...";try{var result=await PortalData.addGroupBulletin({groupId:groupId,message:form.elements.message.value,sendEmail:sendEmail}),delivery=result.emailDelivery;form.reset();if(!delivery){message.textContent="Opslaget er gemt."}else if(delivery.total===0){message.textContent="Opslaget er gemt. Der er ingen medlemmer, som modtager opslag via e-mail."}else if(delivery.failed===0){message.textContent="Opslaget er gemt og sendt som e-mail til "+delivery.sent+" "+(delivery.sent===1?"medlem.":"medlemmer.")}else{message.className="notice warning";message.textContent="Opslaget er gemt. E-mailen blev sendt til "+delivery.sent+" af "+delivery.total+" medlemmer; "+delivery.failed+" kunne ikke sendes."}loadBulletins()}catch(x){message.className="notice warning";message.textContent=x.message}finally{button.disabled=false;button.textContent="Slå op"}};
 </script>

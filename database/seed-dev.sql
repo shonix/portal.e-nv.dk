@@ -21,9 +21,15 @@ ON CONFLICT (slug) DO UPDATE SET
   company = EXCLUDED.company,
   email = EXCLUDED.email;
 
-INSERT INTO groups (name, address)
-VALUES ('Lokal testgruppe', 'Lokalt mødelokale')
-ON CONFLICT (name) DO UPDATE SET address = EXCLUDED.address;
+INSERT INTO groups (name, address, description)
+VALUES (
+  'Lokal testgruppe',
+  'Testvej 1, 9000 Aalborg',
+  'Et lokalt erhvervsnetværk for partnere, der vil dele erfaringer, skabe relationer og udvikle nye muligheder sammen.'
+)
+ON CONFLICT (name) DO UPDATE SET
+  address = EXCLUDED.address,
+  description = EXCLUDED.description;
 
 INSERT INTO group_members (group_id, user_id)
 SELECT g.id, u.id
