@@ -493,6 +493,89 @@ if ($method === 'POST' && $action === 'admin-invitations') {
     respond(['invitation' => $invitation], 201);
 }
 
+if ($method === 'POST' && $action === 'delete-my-account') {
+    requireLogin();
+    $body = requestBody();
+    required($body, ['password']);
+
+    $accountStatement = $pdo->prepare(
+        'SELECT u.id, u.email, u.password_hash, u.role,
+                p.profile_picture_stored_name AS "profilePictureStoredName"
+         FROM users u
+         LEFT JOIN partners p ON p.user_id = u.id
+         WHERE u.id = :id'
+    );
+    $accountStatement->execute(['id' => $userId]);
+    $account = $accountStatement->fetch();
+    if (!$account || !password_verify((string) $body['password'], (string) $account['password_hash'])) {
+        respond(['error' => 'Adgangskoden er forkert.'], 401);
+    }
+
+    if ($account['role'] === 'admin') {
+        $adminCount = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE role = 'admin'")->fetchColumn();
+        if ($adminCount <= 1) {
+            respond(['error' => 'Den sidste administrator kan ikke slette sin egen bruger.'], 422);
+        }
+    }
+
+    $picturePath = null;
+    $pendingPicturePath = null;
+    $storedName = trim((string) ($account['profilePictureStoredName'] ?? ''));
+    if ($storedName !== '') {
+        $picturePath = profilePictureDirectory($config) . DIRECTORY_SEPARATOR . basename($storedName);
+        if (is_file($picturePath)) {
+            $pendingPicturePath = $picturePath . '.deleting-' . bin2hex(random_bytes(8));
+            if (!rename($picturePath, $pendingPicturePath)) {
+                respond(['error' => 'Profilbilledet kunne ikke klargøres til sletning.'], 500);
+            }
+        }
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $deleteGuests = $pdo->prepare(
+            'DELETE FROM meeting_guests
+             WHERE registered_user_id = :user_id OR LOWER(email) = LOWER(:email)'
+        );
+        $deleteGuests->execute(['user_id' => $userId, 'email' => (string) $account['email']]);
+
+        $deleteInvitations = $pdo->prepare('DELETE FROM invitations WHERE LOWER(email) = LOWER(:email)');
+        $deleteInvitations->execute(['email' => (string) $account['email']]);
+
+        $deleteUser = $pdo->prepare('DELETE FROM users WHERE id = :id');
+        $deleteUser->execute(['id' => $userId]);
+        if ($deleteUser->rowCount() !== 1) {
+            throw new RuntimeException('Account deletion did not remove exactly one user.');
+        }
+        $pdo->commit();
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($pendingPicturePath && $picturePath && is_file($pendingPicturePath)) {
+            rename($pendingPicturePath, $picturePath);
+        }
+        throw $error;
+    }
+
+    if ($pendingPicturePath && is_file($pendingPicturePath) && !unlink($pendingPicturePath)) {
+        error_log('[account deletion] Unable to remove profile picture: ' . $pendingPicturePath);
+    }
+
+    $cookieParameters = session_get_cookie_params();
+    session_unset();
+    session_destroy();
+    if (ini_get('session.use_cookies')) {
+        setcookie(session_name(), '', [
+            'expires' => time() - 42000,
+            'path' => $cookieParameters['path'],
+            'domain' => $cookieParameters['domain'],
+            'secure' => $cookieParameters['secure'],
+            'httponly' => $cookieParameters['httponly'],
+            'samesite' => $cookieParameters['samesite'] ?? 'Lax',
+        ]);
+    }
+    respond(['ok' => true]);
+}
+
 if ($method === 'POST' && $action === 'logout') {
     session_destroy();
     respond(['ok' => true]);

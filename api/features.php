@@ -410,13 +410,6 @@ if ($method === 'POST' && $action === 'admin-send-meeting-invitations') {
     $users->execute($userIds);
     $recipientRows = $users->fetchAll();
     $link = portalUrl('moede-invitation.html?token=' . urlencode($token));
-    $from = (string) ($config['mail_from'] ?? 'noreply@e-nv.dk');
-    $headers = implode("\r\n", [
-        'From: Ejendomsnetværket <' . $from . '>',
-        'Reply-To: ' . $from,
-        'MIME-Version: 1.0',
-        'Content-Type: text/plain; charset=UTF-8',
-    ]);
     $upsert = $pdo->prepare(
         "INSERT INTO meeting_invitation_recipients
             (meeting_id, user_id, invited_at, email_sent_at, email_status, email_error)
@@ -431,8 +424,14 @@ if ($method === 'POST' && $action === 'admin-send-meeting-invitations') {
             "Dato: " . $meeting['meeting_date'] . " kl. " . $meeting['meeting_time'] . "\n" .
             "Adresse: " . $meeting['address'] . "\n\nSvar på invitationen her:\n" . $link .
             "\n\nVenlig hilsen\nEjendomsnetværket";
-        $sent = mail((string) $recipient['email'], 'Invitation: ' . $meeting['title'], $message, $headers);
-        $error = $sent ? null : 'E-mailen kunne ikke sendes af serveren.';
+        $mailResult = sendPortalMail(
+            $config,
+            (string) $recipient['email'],
+            'Invitation: ' . $meeting['title'],
+            $message
+        );
+        $sent = $mailResult['sent'];
+        $error = $mailResult['error'];
         $upsert->execute([
             'meeting_id' => $meetingId,
             'user_id' => (int) $recipient['id'],

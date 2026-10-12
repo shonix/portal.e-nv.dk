@@ -608,8 +608,7 @@
       <h2 class="portal-heading">Årets møder</h2>
 
       <div class="filters">
-        <button class="filter-button active" type="button" data-filter="all">Alle</button>
-        <button class="filter-button" type="button" data-filter="upcoming">Kommende</button>
+        <button class="filter-button active" type="button" data-filter="upcoming">Kommende</button>
         <button class="filter-button" type="button" data-filter="held">Afholdte</button>
         <button class="filter-button" type="button" data-filter="cancelled">Aflyste</button>
         <select class="filter-select" id="meeting-group-filter" aria-label="Filtrer møder efter gruppe">
@@ -634,7 +633,7 @@
 <script src="portal-data.js?v=20261012-02"></script><script src="portal-header.js?v=20260811-04"></script>
 <script>
   var statusLabels = { upcoming: "Kommende", held: "Afholdt", cancelled: "Aflyst" };
-  var selectedMeetingStatus = "all";
+  var selectedMeetingStatus = "upcoming";
   var selectedMeetingMonth = "all";
   var meetingMonthKeys = [], monthWindowStart = 0;
   var pageSize = 8, groupPage = 1, meetingPage = 1, groupRows = [], allowedGroupIds = [];
@@ -698,7 +697,7 @@
     var groupId = document.getElementById("meeting-group-filter").value;
     var matches = [];
     document.querySelectorAll(".partner-portal .meeting").forEach(function (meeting) {
-      var statusMatch = selectedMeetingStatus === "all" || meeting.dataset.status === selectedMeetingStatus;
+      var statusMatch = meeting.dataset.status === selectedMeetingStatus;
       var monthMatch = selectedMeetingMonth === "all" || meeting.dataset.month === selectedMeetingMonth;
       var groupIds = (meeting.dataset.groupIds || "").split(",").filter(Boolean);
       var groupMatch = !groupId || groupIds.includes(groupId);

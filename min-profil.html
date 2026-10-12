@@ -17,6 +17,8 @@
     .required{color:#c92b2b}.hint{color:var(--muted);font-size:13px}
     input[readonly]{background:#f1f4f6;color:#536174}
     .email-option{display:flex;gap:8px;align-items:flex-start;color:var(--navy);font-size:14px}.email-option input{width:auto;margin:1px 0 0}
+    .settings-section{margin-top:24px;padding-top:20px;border-top:1px solid var(--line)}
+    .settings-section h2{margin:0 0 6px;font-size:20px}.settings-section .email-option{margin-top:14px}
     .picture-row{display:flex;gap:16px;align-items:center;margin:16px 0 4px}
     .profile-preview{display:flex;width:86px;height:86px;flex:0 0 86px;align-items:center;justify-content:center;overflow:hidden;border-radius:50%;background:var(--green);color:#fff;font-size:30px;font-weight:bold}
     .profile-preview img{width:100%;height:100%;object-fit:cover}
@@ -32,6 +34,11 @@
     .crop-actions{display:flex;justify-content:flex-end;gap:10px}.crop-actions button{margin-top:16px}
     .secondary{background:#e8edf2;color:var(--navy)}
     .picker{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;margin-top:5px}.picker select{width:100%;padding:10px;border:1px solid var(--line);border-radius:5px;background:#fff}.selected-tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.tag{display:inline-flex;gap:7px;align-items:center;padding:6px 9px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--navy);font-size:13px}.tag button{margin:0;padding:0;border:0;background:transparent;color:#c92b2b}
+    .danger-zone{margin-top:28px;padding:20px;border:1px solid #e4b4b4;border-radius:8px;background:#fff}
+    .danger-zone h2{margin:0 0 8px;color:#8f1d1d;font-size:21px}.danger-zone p{line-height:1.5}
+    .danger-button{background:#b42318;font-weight:bold;cursor:pointer}.danger-button:hover{background:#941b13}.danger-button:disabled{cursor:wait;opacity:.65}
+    .delete-confirmation{margin:16px 0 0;padding:16px;border-color:#edcccc;background:#fff8f8}.delete-confirmation[hidden]{display:none}
+    .delete-actions{display:flex;flex-wrap:wrap;gap:10px}.delete-actions button{margin-top:14px}.delete-notice{color:#a12626;font-size:14px}
   </style>
 </head>
 <body>
@@ -50,18 +57,36 @@
       <label>Virksomhed<input name="company"></label>
       <label>Virksomhedslink<input name="companyUrl" type="url"></label>
       <label>E-mail<input name="email" type="email" readonly></label>
-      <label class="email-option"><input name="bulletinEmailsEnabled" type="checkbox" checked><span>Modtag e-mails om nye opslag på opslagstavlen</span></label>
-      <p class="hint">Du kan stadig se opslagene i portalen, hvis du fravælger e-mails.</p>
       <label>Telefon<input name="phone"></label>
       <label>Biografi<textarea name="biography"></textarea></label>
       <label>Brancher
         <span class="picker"><select id="label-picker"></select><button type="button" id="add-label">Tilføj</button></span>
       </label>
       <div class="selected-tags" id="labels"></div>
+      <section class="settings-section" aria-labelledby="email-settings-heading">
+        <h2 id="email-settings-heading">E-mailindstillinger</h2>
+        <label class="email-option"><input name="bulletinEmailsEnabled" type="checkbox" checked><span>Modtag e-mails om nye opslag på opslagstavlen</span></label>
+        <p class="hint">Du kan stadig se opslagene i portalen, hvis du fravælger e-mails.</p>
+      </section>
       <button>Gem profil</button>
       <p class="notice" id="notice"></p>
       <p><a id="view-profile" style="display:none">Se min profil</a></p>
     </form>
+    <section class="danger-zone" aria-labelledby="delete-account-heading">
+      <h2 id="delete-account-heading">Slet bruger</h2>
+      <p>Dette sletter din profil, dine personlige oplysninger, gruppetilknytninger, mødesvar og dit profilbillede. Handlingen kan ikke fortrydes.</p>
+      <button class="danger-button" id="show-delete-account" type="button">Slet bruger</button>
+      <form class="delete-confirmation" id="delete-account-form" hidden>
+        <label>Bekræft med din adgangskode
+          <input id="delete-account-password" name="password" type="password" required autocomplete="current-password">
+        </label>
+        <div class="delete-actions">
+          <button class="secondary" id="cancel-delete-account" type="button">Fortryd</button>
+          <button class="danger-button" id="confirm-delete-account" type="submit">Slet bruger permanent</button>
+        </div>
+        <p class="delete-notice" id="delete-account-notice" role="alert"></p>
+      </form>
+    </section>
   </main>
   <div class="cropper" id="cropper" hidden>
     <div class="cropper-panel" role="dialog" aria-modal="true" aria-labelledby="cropper-title">
@@ -74,7 +99,7 @@
       </div>
     </div>
   </div>
-  <script src="portal-data.js?v=20261002-01"></script><script src="portal-header.js?v=20260811-04"></script>
+  <script src="portal-data.js?v=20261013-01"></script><script src="portal-header.js?v=20260811-04"></script>
   <script>
     function showLink(partner) {
       if (partner && partner.id) {
@@ -263,6 +288,35 @@
         renderPreview(result.partner || data);
       } catch (problem) {
         notice.textContent = problem.message;
+      }
+    };
+    var deleteAccountForm = document.getElementById("delete-account-form");
+    var showDeleteAccount = document.getElementById("show-delete-account");
+    var deleteAccountNotice = document.getElementById("delete-account-notice");
+    showDeleteAccount.onclick = function () {
+      showDeleteAccount.hidden = true;
+      deleteAccountForm.hidden = false;
+      document.getElementById("delete-account-password").focus();
+    };
+    document.getElementById("cancel-delete-account").onclick = function () {
+      deleteAccountForm.reset();
+      deleteAccountNotice.textContent = "";
+      deleteAccountForm.hidden = true;
+      showDeleteAccount.hidden = false;
+    };
+    deleteAccountForm.onsubmit = async function (event) {
+      event.preventDefault();
+      var button = document.getElementById("confirm-delete-account");
+      deleteAccountNotice.textContent = "";
+      button.disabled = true;
+      button.textContent = "Sletter...";
+      try {
+        await PortalData.deleteMyAccount(deleteAccountForm.elements.password.value);
+        location.href = "login.html?accountDeleted=1";
+      } catch (problem) {
+        deleteAccountNotice.textContent = problem.message;
+        button.disabled = false;
+        button.textContent = "Slet bruger permanent";
       }
     };
   </script>

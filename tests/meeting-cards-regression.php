@@ -12,6 +12,10 @@ $checks = [
     'moede.html' => ['meeting.coverImageUrl'],
 ];
 
+$forbidden = [
+    'index.html' => ['data-filter="all"', 'selectedMeetingStatus === "all"'],
+];
+
 $failures = [];
 foreach ($checks as $file => $needles) {
     $contents = file_get_contents($root . '/' . $file);
@@ -21,6 +25,14 @@ foreach ($checks as $file => $needles) {
     }
     foreach ($needles as $needle) {
         if (!str_contains($contents, $needle)) $failures[] = "{$file} mangler {$needle}.";
+    }
+}
+
+foreach ($forbidden as $file => $needles) {
+    $contents = file_get_contents($root . '/' . $file);
+    if ($contents === false) continue;
+    foreach ($needles as $needle) {
+        if (str_contains($contents, $needle)) $failures[] = "{$file} må ikke indeholde {$needle}.";
     }
 }
 

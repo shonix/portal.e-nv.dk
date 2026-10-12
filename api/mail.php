@@ -31,6 +31,15 @@ function portalMailFailure(string $publicMessage, string $logMessage): array
     return portalMailResult(false, $publicMessage);
 }
 
+function portalMailPreferencesFooter(array $config): string
+{
+    $baseUrl = rtrim(trim((string) ($config['portal_base_url'] ?? 'https://portal.e-nv.dk')), '/');
+    return "\n\n---\n" .
+        "Vil du ændre, hvordan du modtager e-mails fra Partnerportalen?\n" .
+        "Du kan opdatere dine præferencer eller afmelde e-mails om nye opslag under Min profil:\n" .
+        $baseUrl . '/min-profil.html';
+}
+
 function portalPrepareMailAttachments(array $attachments): array
 {
     $prepared = [];
@@ -285,6 +294,8 @@ function sendPortalMail(
     if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
         return portalMailFailure('Modtagerens e-mailadresse er ugyldig.', 'Invalid recipient address.');
     }
+
+    $body = rtrim($body) . portalMailPreferencesFooter($config);
 
     $settings = portalMailSettings($config);
     $attachmentResult = portalPrepareMailAttachments($attachments);
