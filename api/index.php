@@ -68,6 +68,27 @@ function missingGroupLabels(PDO $pdo, int $groupId): array
     return $statement->fetchAll();
 }
 
+function representedGroupLabels(PDO $pdo, int $groupId): array
+{
+    $statement = $pdo->prepare(
+        'SELECT l.id::text, l.name
+         FROM partner_labels l
+         WHERE EXISTS (
+             SELECT 1
+             FROM group_members gm
+             JOIN users u ON u.id = gm.user_id
+             JOIN partners p ON p.user_id = u.id
+               OR (p.user_id IS NULL AND LOWER(TRIM(p.email)) = LOWER(TRIM(u.email)))
+             JOIN partner_profile_labels ppl ON ppl.partner_id = p.id
+             WHERE gm.group_id = :group_id
+               AND ppl.label_id = l.id
+         )
+         ORDER BY l.name'
+    );
+    $statement->execute(['group_id' => $groupId]);
+    return $statement->fetchAll();
+}
+
 function manualPartnerNames(?string $text): array
 {
     $text = trim((string) $text);
@@ -1087,6 +1108,7 @@ if ($method === 'GET' && $action === 'group-partners') {
     respond([
         'group' => $groupRow,
         'partners' => $partnerRows,
+        'representedLabels' => representedGroupLabels($pdo, $groupId),
         'missingLabels' => missingGroupLabels($pdo, $groupId),
     ]);
 }

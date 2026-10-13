@@ -36,6 +36,10 @@ if (!str_contains((string) $contents['api'], 'getimagesize((string) $file[\'tmp_
     || !str_contains((string) $contents['api'], "header('X-Content-Type-Options: nosniff')")) {
     $failures[] = 'Gruppebilleder skal indholdsvalideres og leveres med nosniff.';
 }
+if (!str_contains((string) $contents['api'], 'function representedGroupLabels')
+    || !str_contains((string) $contents['api'], "'representedLabels' => representedGroupLabels")) {
+    $failures[] = 'Gruppe-API\'et skal returnere brancher, der er repræsenteret i gruppen.';
+}
 if (!str_contains((string) $contents['client'], 'uploadGroupPicture:function')
     || !str_contains((string) $contents['client'], 'deleteGroupPicture:function')) {
     $failures[] = 'Frontend-klienten mangler upload og sletning af gruppebilleder.';
@@ -50,8 +54,10 @@ if (!str_contains((string) $contents['overview'], 'class="group-cover"')
     $failures[] = 'Gruppeoversigten skal vise kort med billede og beskrivelse.';
 }
 if (!str_contains((string) $contents['group'], 'id="group-hero"')
-    || !str_contains((string) $contents['group'], 'data.group.coverImageUrl')) {
-    $failures[] = 'Gruppesiden skal vise det uploadede gruppebillede.';
+    || !str_contains((string) $contents['group'], 'data.group.coverImageUrl')
+    || !str_contains((string) $contents['group'], 'id="represented-labels"')
+    || !str_contains((string) $contents['group'], 'renderIndustryOverview(data.representedLabels,data.missingLabels)')) {
+    $failures[] = 'Gruppesiden skal vise gruppebillede og brancheoverblik.';
 }
 
 if ($failures !== []) {

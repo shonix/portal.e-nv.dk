@@ -176,6 +176,7 @@ if ($method === 'GET' && $action === 'admin-group-detail') {
     respond([
         'group' => $groupRow,
         'members' => $members->fetchAll(),
+        'representedLabels' => representedGroupLabels($pdo, $groupId),
         'missingLabels' => missingGroupLabels($pdo, $groupId),
     ]);
 }

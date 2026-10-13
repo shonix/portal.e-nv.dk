@@ -57,6 +57,10 @@ files and other runtime data must not be committed.
 - Users can permanently delete their own account from the bottom of the profile
   page after confirming their current password. Related personal portal data is
   removed, and the final administrator account cannot delete itself.
+- Each group page shows a two-column industry overview with counts and scrollable
+  lists for industries represented in the group and industries still missing.
+  Both lists are calculated from the existing profile labels and require no
+  additional database fields.
 
 ## External address service
 
