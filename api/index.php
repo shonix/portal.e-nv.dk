@@ -1385,6 +1385,75 @@ if ($method === 'GET' && $action === 'meeting-partners') {
     ]);
 }
 
+if ($method === 'POST' && $action === 'public-meeting-guest') {
+    $body = requestBody();
+    if (trim((string) ($body['website'] ?? '')) !== '') {
+        respond(['registered' => true], 201);
+    }
+    required($body, ['meetingId', 'name', 'company', 'email']);
+    $meeting = meetingByKey($pdo, trim((string) $body['meetingId']));
+    if (!$meeting) respond(['error' => 'Mødet findes ikke.'], 404);
+    if ($meeting['status'] === 'cancelled') respond(['error' => 'Du kan ikke tilmelde dig et aflyst møde.'], 422);
+
+    $name = trim((string) $body['name']);
+    $company = trim((string) $body['company']);
+    $email = strtolower(trim((string) $body['email']));
+    if (strlen($name) > 160 || strlen($company) > 160 || strlen($email) > 254) {
+        respond(['error' => 'Navn, firma eller e-mail er for langt.'], 422);
+    }
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        respond(['error' => 'E-mailadressen er ikke gyldig.'], 422);
+    }
+
+    $now = time();
+    $attempts = array_values(array_filter(
+        is_array($_SESSION['public_guest_registration_attempts'] ?? null)
+            ? $_SESSION['public_guest_registration_attempts']
+            : [],
+        fn($timestamp) => is_int($timestamp) && $timestamp > $now - 600
+    ));
+    if (count($attempts) >= 5) {
+        respond(['error' => 'Der er foretaget for mange tilmeldinger. Prøv igen senere.'], 429);
+    }
+    $attempts[] = $now;
+    $_SESSION['public_guest_registration_attempts'] = $attempts;
+
+    $pdo->beginTransaction();
+    try {
+        $meetingLock = $pdo->prepare('SELECT id FROM meetings WHERE id = :id FOR UPDATE');
+        $meetingLock->execute(['id' => (int) $meeting['id']]);
+        $existing = $pdo->prepare(
+            'SELECT id
+             FROM meeting_guests
+             WHERE meeting_id = :meeting_id
+               AND LOWER(TRIM(email)) = LOWER(TRIM(:email))
+             ORDER BY id
+             LIMIT 1'
+        );
+        $existing->execute(['meeting_id' => (int) $meeting['id'], 'email' => $email]);
+        $existingGuestId = $existing->fetchColumn();
+
+        if (!$existingGuestId) {
+            $save = $pdo->prepare(
+                'INSERT INTO meeting_guests (meeting_id, name, company, email)
+                 VALUES (:meeting_id, :name, :company, :email)'
+            );
+            $save->execute([
+                'meeting_id' => (int) $meeting['id'],
+                'name' => $name,
+                'company' => $company,
+                'email' => $email,
+            ]);
+        }
+        $pdo->commit();
+    } catch (Throwable $exception) {
+        $pdo->rollBack();
+        throw $exception;
+    }
+
+    respond(['registered' => true], 201);
+}
+
 if ($method === 'GET' && $action === 'meeting-self-guest') {
     requireLogin();
     $meetingKey = trim((string) ($_GET['id'] ?? ''));

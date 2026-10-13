@@ -22,7 +22,12 @@ $checks = [
         "hash('sha256', \$guestToken)",
         'INSERT INTO meeting_guests',
     ],
-    'portal-data.js' => ['guestMeetingInvitation:function', 'saveGuestMeetingRsvp:function'],
+    'api/index.php' => [
+        "\$action === 'public-meeting-guest'",
+        'LOWER(TRIM(email)) = LOWER(TRIM(:email))',
+        "respond(['registered' => true], 201)",
+    ],
+    'portal-data.js' => ['guestMeetingInvitation:function', 'saveGuestMeetingRsvp:function', 'registerPublicMeetingGuest:function'],
     'admin-moedeinvitationer.html' => [
         'data-tab="guests"',
         'id="guest-drafts"',
@@ -33,6 +38,13 @@ $checks = [
         'Invitationer og svar',
     ],
     'gaesteinvitation.html' => ['Jeg deltager', 'Jeg deltager ikke', 'saveGuestMeetingRsvp'],
+    'moede.html' => [
+        'id="public-guest-dialog"',
+        'id="public-guest-form"',
+        'registerPublicMeetingGuest',
+        'id="copy-meeting-link"',
+        'navigator.clipboard.writeText',
+    ],
     'deployment/portal-files.txt' => ['gaesteinvitation.html'],
 ];
 
@@ -53,4 +65,4 @@ if ($failures !== []) {
     exit(1);
 }
 
-fwrite(STDOUT, "OK: Eksterne gæsteinvitationer, personlige svarlinks og adminstatus er forbundet hele vejen.\n");
+fwrite(STDOUT, "OK: Offentlig gæstetilmelding, eksterne gæsteinvitationer, mødelinks og adminstatus er forbundet hele vejen.\n");

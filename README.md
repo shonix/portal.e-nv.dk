@@ -4,8 +4,9 @@ The partner portal is a small PHP and PostgreSQL application hosted at
 `https://portal.e-nv.dk`. The frontend consists of static HTML, CSS and
 JavaScript files, while `api/` contains the PHP API.
 
-There is no Composer or npm build step. The browser-side XLSX library is
-committed as `xlsx.full.min.js`.
+There is no Composer or npm build step. The browser-side spreadsheet libraries
+are committed as `xlsx.full.min.js` for importing and `assets/exceljs.min.js`
+for formatted exports.
 
 ## Requirements
 
@@ -33,6 +34,7 @@ portal-data.js               Shared API client
 portal-header.js             Shared portal header
 portal-header.css            Shared header styles
 xlsx.full.min.js             Browser-side XLSX parser
+assets/exceljs.min.js        Browser-side formatted XLSX exporter
 .htaccess                    Clean URLs and cache headers
 ```
 
@@ -51,6 +53,9 @@ files and other runtime data must not be committed.
   on `gaesteinvitation.html` without creating a portal account. Administrators
   can follow portal-user and external-guest responses on the same invitation
   page.
+- Public visitors can open a meeting link and add themselves to its guest list
+  with name, company and email without creating an account. Meeting pages also
+  include a copy-link button in the cover image.
 - Automated portal emails include a link to the recipient's profile settings.
   Users can disable group-bulletin emails there. Meeting invitations and account
   emails are transactional and are not controlled by that bulletin preference.
@@ -60,7 +65,10 @@ files and other runtime data must not be committed.
 - Each group page shows a two-column industry overview with counts and scrollable
   lists for industries represented in the group and industries still missing.
   Both lists are calculated from the existing profile labels and require no
-  additional database fields.
+  additional database fields. Logged-in users can download the complete overview
+  from the group page as a formatted, two-column Excel workbook or a
+  semicolon-separated CSV. Supported browsers open a save dialog so the user
+  can choose the destination.
 - Administrators can create profiles without login access and assign their
   groups and industries in advance. Account status moves from `unclaimed` to
   `invited` and finally `active` when the person accepts the invitation. The

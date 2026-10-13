@@ -59,10 +59,20 @@ if (!str_contains((string) $contents['group'], 'id="group-hero"')
     || !str_contains((string) $contents['group'], 'renderIndustryOverview(data.representedLabels,data.missingLabels)')) {
     $failures[] = 'Gruppesiden skal vise gruppebillede og brancheoverblik.';
 }
+if (!str_contains((string) $contents['group'], 'id="industry-export-format"')
+    || !str_contains((string) $contents['group'], 'assets/exceljs.min.js?v=4.4.0')
+    || !str_contains((string) $contents['group'], 'new ExcelJS.Workbook()')
+    || !str_contains((string) $contents['group'], 'book.xlsx.writeBuffer()')
+    || !str_contains((string) $contents['group'], 'Brancher i gruppen')
+    || !str_contains((string) $contents['group'], 'Brancher der mangler')
+    || !str_contains((string) $contents['group'], 'showSaveFilePicker')
+    || !str_contains((string) $contents['group'], 'function csvValue')) {
+    $failures[] = 'Gruppesiden skal generere sikre, formaterede Excel- og CSV-filer og lade brugeren vælge placering.';
+}
 
 if ($failures !== []) {
     foreach ($failures as $failure) fwrite(STDERR, "FEJL: {$failure}\n");
     exit(1);
 }
 
-fwrite(STDOUT, "OK: Gruppekort, beskrivelser og sikre gruppebilleder er forbundet hele vejen.\n");
+fwrite(STDOUT, "OK: Gruppekort, brancheeksport, beskrivelser og sikre gruppebilleder er forbundet hele vejen.\n");
