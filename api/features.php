@@ -238,6 +238,7 @@ if ($method === 'POST' && $action === 'admin-group-bulletins') {
              JOIN users u ON u.id = gm.user_id
              WHERE gm.group_id = :group_id
                AND u.bulletin_emails_enabled
+               AND u.account_status = 'active'
              ORDER BY u.email'
         );
         $recipientStatement->execute(['group_id' => $groupId]);
@@ -434,7 +435,13 @@ if ($method === 'POST' && $action === 'admin-send-meeting-invitations') {
     $groupIds = array_values(array_unique(array_map('intval', $body['groupIds'] ?? [])));
     if ($groupIds) {
         $placeholders = implode(',', array_fill(0, count($groupIds), '?'));
-        $groupUsers = $pdo->prepare("SELECT DISTINCT user_id FROM group_members WHERE group_id IN ($placeholders)");
+        $groupUsers = $pdo->prepare(
+            "SELECT DISTINCT gm.user_id
+             FROM group_members gm
+             JOIN users u ON u.id = gm.user_id
+             WHERE gm.group_id IN ($placeholders)
+               AND u.account_status = 'active'"
+        );
         $groupUsers->execute($groupIds);
         $userIds = array_values(array_unique(array_merge($userIds, array_map('intval', $groupUsers->fetchAll(PDO::FETCH_COLUMN)))));
     }
@@ -468,10 +475,14 @@ if ($method === 'POST' && $action === 'admin-send-meeting-invitations') {
                  LIMIT 1
              ) profile ON TRUE
              WHERE u.id IN ($placeholders)
+               AND u.account_status = 'active'
              ORDER BY u.email"
         );
         $users->execute($userIds);
         $recipientRows = $users->fetchAll();
+    }
+    if (!$recipientRows && !$guestRecipients) {
+        respond(['error' => 'Vælg mindst én aktiv portalbruger eller ekstern gæst.'], 422);
     }
     $link = portalUrl('moede-invitation.html?token=' . urlencode($token));
     $upsert = $pdo->prepare(

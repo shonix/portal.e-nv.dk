@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('member', 'admin')),
+  account_status TEXT NOT NULL DEFAULT 'active' CHECK (account_status IN ('unclaimed', 'invited', 'active')),
   bulletin_emails_enabled BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -92,6 +93,9 @@ CREATE TABLE IF NOT EXISTS meeting_groups (
 );
 
 ALTER TABLE partners ADD COLUMN IF NOT EXISTS user_id BIGINT UNIQUE REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS account_status TEXT NOT NULL DEFAULT 'active'
+  CHECK (account_status IN ('unclaimed', 'invited', 'active'));
 ALTER TABLE partners
   ADD COLUMN IF NOT EXISTS profile_picture_stored_name TEXT UNIQUE,
   ADD COLUMN IF NOT EXISTS profile_picture_mime_type TEXT,
@@ -110,6 +114,7 @@ INSERT INTO meeting_groups (meeting_id, group_id)
 SELECT id, group_id FROM meetings WHERE group_id IS NOT NULL
 ON CONFLICT DO NOTHING;
 CREATE INDEX IF NOT EXISTS partners_user_id_idx ON partners (user_id);
+CREATE INDEX IF NOT EXISTS users_account_status_idx ON users (account_status);
 CREATE INDEX IF NOT EXISTS group_members_user_id_idx ON group_members (user_id);
 CREATE INDEX IF NOT EXISTS group_members_group_id_idx ON group_members (group_id);
 CREATE INDEX IF NOT EXISTS group_bulletins_group_idx ON group_bulletins (group_id, created_at DESC);

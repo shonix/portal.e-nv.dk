@@ -61,6 +61,11 @@ files and other runtime data must not be committed.
   lists for industries represented in the group and industries still missing.
   Both lists are calculated from the existing profile labels and require no
   additional database fields.
+- Administrators can create profiles without login access and assign their
+  groups and industries in advance. Account status moves from `unclaimed` to
+  `invited` and finally `active` when the person accepts the invitation. The
+  existing profile and memberships are retained during activation; non-active
+  accounts are excluded from login, password resets and automatic member mail.
 
 ## External address service
 
@@ -196,6 +201,7 @@ the migrations that have not previously been applied, in numeric order:
 | 020 | Group descriptions and cover-picture metadata |
 | 021 | Meeting cover-picture metadata |
 | 022 | External meeting-guest invitations, hashed RSVP tokens, delivery status and responses |
+| 023 | Account lifecycle for profiles created before invitation (`unclaimed`, `invited`, `active`) |
 
 The project does not yet have a migration ledger. Record the last applied
 migration as part of the deployment notes. Back up the database before applying
@@ -321,8 +327,9 @@ unless the safety checks are deliberately changed.
 If GitHub Actions deployment is unavailable:
 
 1. Back up the current `portal/` directory and PostgreSQL database.
-2. Apply any required database migrations. This release requires migration 022
-   for external meeting-guest invitations.
+2. Apply any required database migrations. The current changes require
+   migrations 022 and 023 when upgrading a database that previously ended at
+   migration 021.
 3. Run `pwsh -NoProfile -File scripts/build-deploy.ps1`.
 4. Upload the contents of `dist/portal/` to `portal/`.
 5. Do not modify `portal-config.php`, `portal-private/` or `public_html/`.

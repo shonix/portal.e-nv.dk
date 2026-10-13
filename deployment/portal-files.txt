@@ -23,6 +23,7 @@ admin-moedeinvitationer.html
 admin-moeder-oversigt.html
 admin-moeder.html
 admin-profil.html
+admin-profil-uden-login.html
 admin.html
 favicon.svg
 glemt-adgangskode.html

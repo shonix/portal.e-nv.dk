@@ -17,10 +17,10 @@
     .button-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:16px}
     button,.button{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:9px 13px;border:1px solid var(--line);border-radius:5px;background:#fff;color:var(--navy);font:inherit;text-decoration:none;cursor:pointer}
     .primary{border-color:var(--green);background:var(--green);color:#fff}.notice{min-height:20px;color:var(--green)}
-    .filters{display:grid;grid-template-columns:minmax(220px,1fr) 150px 180px auto;gap:10px;align-items:end;margin-bottom:12px}
+    .filters{display:grid;grid-template-columns:minmax(200px,1fr) 125px 145px 170px auto;gap:10px;align-items:end;margin-bottom:12px}
     .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:8px;background:#fff}table{width:100%;border-collapse:collapse;min-width:760px}
     th,td{padding:12px 14px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{color:var(--muted);font-size:12px;text-transform:uppercase}tr:last-child td{border-bottom:0}
-    .meta{color:var(--muted);font-size:13px}.missing{color:var(--danger)}.pager{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-top:12px}.empty{padding:28px;color:var(--muted);text-align:center}
+    .meta{color:var(--muted);font-size:13px}.missing{color:var(--danger)}.status{display:inline-flex;padding:4px 8px;border-radius:999px;background:#edf1f5;color:var(--muted);font-size:11px;font-weight:bold}.status.active{background:#e7f4eb;color:#237044}.status.invited{background:#fff3d6;color:#8a6400}.status.unclaimed{background:#edf3fb;color:var(--green)}.pager{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-top:12px}.empty{padding:28px;color:var(--muted);text-align:center}
     @media(max-width:900px){main{width:100%;max-width:100%;padding:28px 16px 48px!important;overflow-x:hidden}.layout{grid-template-columns:1fr}.layout,.panel,.table-wrap{width:100%;max-width:100%;min-width:0}.panel{padding:16px}.group-picker{grid-template-columns:1fr}.group-picker button{width:100%}.filters{grid-template-columns:1fr}.filters button{width:100%}.pager{align-items:stretch;flex-direction:column}.pager .button-row{margin-top:0}.pager .button-row button{width:100%}}
   </style>
 </head>
@@ -28,7 +28,8 @@
 <main>
   <a href="admin.html">&larr; Administration</a>
   <h1>Brugere</h1>
-  <p class="intro">Opret brugere her. Redigering foregaar paa brugerens egen underside, saa listen er hurtig at scanne.</p>
+  <p class="intro">Administrer brugere og profiler. En profil uden login kan inviteres og overtages senere.</p>
+  <p><a class="button primary" href="admin-profil-uden-login.html">Opret profil uden login</a></p>
   <div class="layout">
     <form class="panel" id="form">
       <h2>Opret bruger</h2>
@@ -46,6 +47,7 @@
       <form class="filters" id="filters">
         <label>Soeg<input name="search" placeholder="E-mail, navn eller firma"></label>
         <label>Rolle<select name="role"><option value="">Alle roller</option><option value="member">Medlem</option><option value="admin">Administrator</option></select></label>
+        <label>Status<select name="accountStatus"><option value="">Alle statusser</option><option value="unclaimed">Ikke inviteret</option><option value="invited">Invitation sendt</option><option value="active">Aktiv</option></select></label>
         <label>Gruppe<select name="groupId" id="group-filter"><option value="">Alle grupper</option></select></label>
         <button class="primary">Filtrer</button>
       </form>
@@ -63,7 +65,8 @@ function renderGroupPicker(selectId,listId,selected){selected=(selected||[]).map
 function bindGroupRemovers(listId,selected,onChange){document.getElementById(listId).querySelectorAll("[data-remove-group]").forEach(function(button){button.onclick=function(){var id=String(button.dataset.removeGroup);selected.splice(selected.indexOf(id),1);onChange()}})}
 function updateNewUserGroups(){renderGroupPicker("new-user-group","new-user-groups",newUserGroupIds);bindGroupRemovers("new-user-groups",newUserGroupIds,updateNewUserGroups)}
 function params(){var d=Object.fromEntries(new FormData(filters));d.page=page;d.pageSize=pageSize;return d}
-function renderUsers(data){total=data.total||0;var users=data.users||[];count.textContent=total?("Viser "+(((page-1)*pageSize)+1)+"-"+Math.min(page*pageSize,total)+" af "+total+" brugere"):"Ingen brugere matcher filteret";prev.disabled=page<=1;next.disabled=page*pageSize>=total;if(!users.length){document.getElementById("table-wrap").innerHTML='<div class="empty">Ingen brugere matcher filteret.</div>';return}document.getElementById("table-wrap").innerHTML='<table><thead><tr><th>Bruger</th><th>Rolle</th><th>Grupper</th><th>Profil</th><th></th></tr></thead><tbody>'+users.map(function(u){var profile=u.profileId?'<a href="partner-profil.html?id='+encodeURIComponent(u.profileId)+'">'+PortalData.escape(u.profileName||"Profil")+'</a><br><a href="admin-profil.html?userId='+encodeURIComponent(u.id)+'">Rediger profil</a>':'<span class="missing">Mangler</span><br><a href="admin-profil.html?userId='+encodeURIComponent(u.id)+'">Opret profil</a>';return'<tr><td><strong>'+PortalData.escape(u.email)+'</strong></td><td>'+PortalData.escape(u.role)+'</td><td class="meta">'+PortalData.escape(u.groups||"Ingen")+'</td><td>'+profile+'</td><td><a class="button" href="admin-bruger.html?id='+encodeURIComponent(u.id)+'">Rediger</a></td></tr>'}).join("")+'</tbody></table>'}
+function statusLabel(status){return status==="unclaimed"?"Ikke inviteret":status==="invited"?"Invitation sendt":"Aktiv"}
+function renderUsers(data){total=data.total||0;var users=data.users||[];count.textContent=total?("Viser "+(((page-1)*pageSize)+1)+"-"+Math.min(page*pageSize,total)+" af "+total+" brugere"):"Ingen brugere matcher filteret";prev.disabled=page<=1;next.disabled=page*pageSize>=total;if(!users.length){document.getElementById("table-wrap").innerHTML='<div class="empty">Ingen brugere matcher filteret.</div>';return}document.getElementById("table-wrap").innerHTML='<table><thead><tr><th>Bruger</th><th>Status</th><th>Rolle</th><th>Grupper</th><th>Profil</th><th></th></tr></thead><tbody>'+users.map(function(u){var status=u.accountStatus||"active",profile=u.profileId?'<a href="partner-profil.html?id='+encodeURIComponent(u.profileId)+'">'+PortalData.escape(u.profileName||"Profil")+'</a><br><a href="admin-profil.html?userId='+encodeURIComponent(u.id)+'">Rediger profil</a>':'<span class="missing">Mangler</span><br><a href="admin-profil.html?userId='+encodeURIComponent(u.id)+'">Opret profil</a>';return'<tr><td><strong>'+PortalData.escape(u.email)+'</strong></td><td><span class="status '+PortalData.escape(status)+'">'+statusLabel(status)+'</span></td><td>'+PortalData.escape(u.role)+'</td><td class="meta">'+PortalData.escape(u.groups||"Ingen")+'</td><td>'+profile+'</td><td><a class="button" href="admin-bruger.html?id='+encodeURIComponent(u.id)+'">Rediger</a></td></tr>'}).join("")+'</tbody></table>'}
 async function load(){var data=await PortalData.adminUsers(params());renderUsers(data)}
 PortalData.requireSession("admin").then(async function(){groups=await PortalData.groups();updateNewUserGroups();document.getElementById("group-filter").innerHTML='<option value="">Alle grupper</option><option value="none">Ingen gruppe</option>'+groups.map(function(g){return'<option value="'+g.id+'">'+PortalData.escape(g.name)+'</option>'}).join("");load()});
 filters.onsubmit=function(e){e.preventDefault();page=1;load()};

@@ -18,7 +18,7 @@
     .button-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:18px}
     button,.button{display:inline-flex;align-items:center;justify-content:center;min-height:38px;padding:9px 13px;border:1px solid var(--line);border-radius:5px;background:#fff;color:var(--navy);font:inherit;text-decoration:none;cursor:pointer}
     .primary{border-color:var(--green);background:var(--green);color:#fff}.danger{border-color:var(--danger);color:var(--danger)}
-    .notice{min-height:20px;color:var(--green)}.missing{color:var(--danger)}
+    .notice{min-height:20px;color:var(--green)}.missing{color:var(--danger)}.status{display:inline-flex;margin-top:8px;padding:5px 9px;border-radius:999px;background:#edf1f5;color:var(--muted);font-size:12px;font-weight:bold}.status.active{background:#e7f4eb;color:#237044}.status.invited{background:#fff3d6;color:#8a6400}.status.unclaimed{background:#edf3fb;color:var(--green)}
     .link-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end}.link-row input{margin-top:0}.link-row button{white-space:nowrap}
     [hidden]{display:none!important}@media(max-width:620px){main{padding:28px 16px 48px}.panel{padding:18px}.link-row{grid-template-columns:1fr}.link-row button{width:100%}}
   </style>
@@ -28,6 +28,7 @@
   <a href="admin-brugere.html">&larr; Brugere</a>
   <h1>Rediger bruger</h1>
   <p class="intro" id="intro">Henter bruger...</p>
+  <p class="status" id="account-status" hidden></p>
   <form class="panel" id="form" style="display:none">
     <label>E-mail<input name="email" type="email" required></label>
     <label>Rolle<select name="role"><option value="member">Medlem</option><option value="admin">Administrator</option></select></label>
@@ -39,6 +40,17 @@
     <div class="button-row"><button class="primary">Gem bruger</button><button type="button" class="danger" id="delete-user">Slet bruger</button></div>
     <p class="notice" id="notice"></p>
   </form>
+  <section class="panel" id="invitation-panel" hidden>
+    <h2>Invitér til login</h2>
+    <p class="meta" id="invitation-help">Send et personligt link, så personen kan vælge en adgangskode og overtage den eksisterende profil.</p>
+    <button type="button" class="primary" id="send-account-invitation">Send invitation</button>
+    <div id="invitation-result" hidden>
+      <label>Invitationslink
+        <span class="link-row"><input id="invitation-url" readonly><button type="button" id="copy-invitation-link">Kopier link</button></span>
+      </label>
+    </div>
+    <p class="notice" id="invitation-notice" role="status"></p>
+  </section>
   <section class="panel" id="reset-panel" hidden>
     <h2>Nulstil adgangskode</h2>
     <p class="meta">Opret og send et personligt engangslink til brugeren. Linket udløber efter 60 minutter.</p>
@@ -55,15 +67,18 @@
 <script src="portal-data.js?v=20260811-01"></script>
 <script src="portal-header.js?v=20260811-04"></script>
 <script>
-var userId=new URLSearchParams(location.search).get("id"), groups=[], selectedUserGroupIds=[], currentUser=null;
+var parameters=new URLSearchParams(location.search),userId=parameters.get("id"), groups=[], selectedUserGroupIds=[], currentUser=null;
+function accountStatusLabel(status){return status==="unclaimed"?"Ikke inviteret":status==="invited"?"Invitation sendt":"Aktiv bruger"}
 function clearResetLink(){document.getElementById("reset-url").value="";document.getElementById("reset-expiry").textContent="";document.getElementById("reset-result").hidden=true}
 function groupName(id){var group=groups.find(function(g){return String(g.id)===String(id)});return group?group.name:"Gruppe "+id}
 function renderGroupPicker(){var selected=selectedUserGroupIds.map(String),options=groups.filter(function(g){return !selected.includes(String(g.id))});document.getElementById("user-group").innerHTML=options.length?options.map(function(g){return'<option value="'+g.id+'">'+PortalData.escape(g.name)+'</option>'}).join(""):'<option value="">Alle grupper er tilfoejet</option>';document.getElementById("user-group").disabled=!options.length;document.getElementById("user-groups").innerHTML=selected.length?selected.map(function(id){return'<span class="tag">'+PortalData.escape(groupName(id))+' <button type="button" data-remove-group="'+id+'">Fjern</button></span>'}).join(""):'<span class="meta">Ingen grupper valgt.</span>';document.getElementById("user-groups").querySelectorAll("[data-remove-group]").forEach(function(button){button.onclick=function(){var id=String(button.dataset.removeGroup);selectedUserGroupIds.splice(selectedUserGroupIds.indexOf(id),1);renderGroupPicker()}})}
-async function load(){groups=await PortalData.groups();var data=await PortalData.adminUsers({userId:userId,page:1,pageSize:5});currentUser=(data.users||[])[0];if(!currentUser){intro.textContent="Brugeren findes ikke.";return}selectedUserGroupIds=(currentUser.groupIds||[]).map(String);intro.textContent=currentUser.email;form.style.display="block";document.getElementById("reset-panel").hidden=false;form.elements.email.value=currentUser.email;form.elements.role.value=currentUser.role;renderGroupPicker();profile.innerHTML=currentUser.profileId?'Profil: <a href="partner-profil.html?id='+encodeURIComponent(currentUser.profileId)+'">'+PortalData.escape(currentUser.profileName||"Se profil")+'</a> · <a href="admin-profil.html?userId='+encodeURIComponent(userId)+'">Rediger profil</a>':'<span class="missing">Profil mangler</span> · <a href="admin-profil.html?userId='+encodeURIComponent(userId)+'">Opret profil</a>'}
+async function load(){groups=await PortalData.groups();var data=await PortalData.adminUsers({userId:userId,page:1,pageSize:5});currentUser=(data.users||[])[0];if(!currentUser){intro.textContent="Brugeren findes ikke.";return}var status=currentUser.accountStatus||"active",statusElement=document.getElementById("account-status");selectedUserGroupIds=(currentUser.groupIds||[]).map(String);intro.textContent=currentUser.email;statusElement.textContent=accountStatusLabel(status);statusElement.className="status "+status;statusElement.hidden=false;form.style.display="block";document.getElementById("reset-panel").hidden=status!=="active";document.getElementById("invitation-panel").hidden=status==="active";document.getElementById("send-account-invitation").textContent=status==="invited"?"Send invitation igen":"Send invitation";form.elements.email.value=currentUser.email;form.elements.role.value=currentUser.role;renderGroupPicker();profile.innerHTML=currentUser.profileId?'Profil: <a href="partner-profil.html?id='+encodeURIComponent(currentUser.profileId)+'">'+PortalData.escape(currentUser.profileName||"Se profil")+'</a> · <a href="admin-profil.html?userId='+encodeURIComponent(userId)+'">Rediger profil</a>':'<span class="missing">Profil mangler</span> · <a href="admin-profil.html?userId='+encodeURIComponent(userId)+'">Opret profil</a>';if(parameters.get("created")==="1"){notice.textContent="Profilen er oprettet uden login. Du kan sende invitationen, når du er klar.";parameters.delete("created");history.replaceState(null,"",location.pathname+"?"+parameters.toString())}}
 PortalData.requireSession("admin").then(load);
 document.getElementById("add-user-group").onclick=function(){var select=document.getElementById("user-group");if(select.value&&!selectedUserGroupIds.includes(String(select.value))){selectedUserGroupIds.push(String(select.value));renderGroupPicker()}};
 form.onsubmit=async function(e){e.preventDefault();var d={userId:userId,email:form.elements.email.value,role:form.elements.role.value,groupIds:selectedUserGroupIds.slice()};try{await PortalData.updateUser(d);notice.textContent="Brugeren er gemt.";clearResetLink();load()}catch(x){notice.textContent=x.message}};
 document.getElementById("delete-user").onclick=async function(){if(!confirm("Slet denne bruger? Profilen slettes ogsaa, hvis den er knyttet til brugeren."))return;try{await PortalData.deleteUser(userId);location.href="admin-brugere.html"}catch(x){notice.textContent=x.message}};
+document.getElementById("send-account-invitation").onclick=async function(){var button=this,message=document.getElementById("invitation-notice");button.disabled=true;message.textContent="Sender invitation...";document.getElementById("invitation-result").hidden=true;try{var result=await PortalData.addInvitation({email:currentUser.email}),invitation=result.invitation;document.getElementById("invitation-url").value=invitation.url||"";document.getElementById("invitation-result").hidden=!invitation.url;message.textContent=invitation.emailSent?"Invitationen er sendt til "+currentUser.email+".":"Invitationen er oprettet, men e-mailen kunne ikke sendes automatisk. Kopiér linket og send det manuelt.";await load()}catch(x){message.textContent=x.message}finally{button.disabled=false}};
+document.getElementById("copy-invitation-link").onclick=async function(){var input=document.getElementById("invitation-url"),message=document.getElementById("invitation-notice");try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(input.value)}else{input.select();document.execCommand("copy")}message.textContent="Invitationslinket er kopieret."}catch(x){input.select();message.textContent="Linket er markeret, så du kan kopiere det manuelt."}};
 document.getElementById("create-reset-link").onclick=async function(){if(!confirm("Opret og send et nyt nulstillingslink? Eventuelle tidligere links til brugeren bliver ugyldige."))return;var button=this,resetNotice=document.getElementById("reset-notice");clearResetLink();button.disabled=true;resetNotice.textContent="Opretter og sender link...";try{var result=await PortalData.createPasswordResetLink(userId);document.getElementById("reset-url").value=result.url;document.getElementById("reset-expiry").textContent="Udløber: "+new Date(Number(result.expiresAt)).toLocaleString("da-DK");document.getElementById("reset-result").hidden=false;resetNotice.textContent=result.emailSent?"Linket er oprettet og sendt til "+result.email+".":"Linket er oprettet, men e-mailen kunne ikke sendes automatisk. Kopiér linket og send det manuelt til "+result.email+"."}catch(x){resetNotice.textContent=x.message}finally{button.disabled=false}};
 document.getElementById("copy-reset-link").onclick=async function(){var input=document.getElementById("reset-url"),resetNotice=document.getElementById("reset-notice");try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(input.value)}else{input.select();document.execCommand("copy")}resetNotice.textContent="Linket er kopieret."}catch(x){input.select();resetNotice.textContent="Kopiering blev blokeret. Linket er markeret, så du kan kopiere det manuelt."}};
 </script>

@@ -248,14 +248,14 @@ function requireMeetingAccess(PDO $pdo, array $meeting, int $userId): void
 if ($method === 'POST' && $action === 'login') {
     $body = requestBody();
     $submittedPassword = (string) ($body['password'] ?? '');
-    $statement = $pdo->prepare('SELECT id, email, password_hash, role FROM users WHERE email = :email');
+    $statement = $pdo->prepare('SELECT id, email, password_hash, role, account_status FROM users WHERE email = :email');
     $statement->execute(['email' => strtolower(trim((string) ($body['email'] ?? '')))]);
     $user = $statement->fetch();
     $passwordHash = $user
         ? (string) $user['password_hash']
         : '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.';
     $passwordMatches = password_verify($submittedPassword, $passwordHash);
-    if (!$user || !$passwordMatches) {
+    if (!$user || $user['account_status'] !== 'active' || !$passwordMatches) {
         respond(['error' => 'Invalid email or password.'], 401);
     }
     session_regenerate_id(true);
@@ -284,15 +284,39 @@ if ($method === 'POST' && $action === 'register') {
         $pdo->rollBack();
         respond(['error' => 'Invitation is invalid or has already been used.'], 422);
     }
-    $statement = $pdo->prepare(
-        "INSERT INTO users (email, password_hash, role) VALUES (:email, :password_hash, 'member')
-         RETURNING id, role"
+    $email = strtolower(trim((string) $invitation['email']));
+    $existingStatement = $pdo->prepare(
+        'SELECT id, role, account_status FROM users WHERE email = :email FOR UPDATE'
     );
+    $existingStatement->execute(['email' => $email]);
+    $existingUser = $existingStatement->fetch();
     try {
-        $statement->execute([
-            'email' => strtolower(trim((string) $invitation['email'])),
-            'password_hash' => password_hash((string) $body['password'], PASSWORD_DEFAULT),
-        ]);
+        if ($existingUser) {
+            if ($existingUser['account_status'] === 'active') {
+                $pdo->rollBack();
+                respond(['error' => 'An account with this email already exists.'], 409);
+            }
+            $statement = $pdo->prepare(
+                "UPDATE users
+                 SET password_hash = :password_hash, account_status = 'active'
+                 WHERE id = :id
+                 RETURNING id, role"
+            );
+            $statement->execute([
+                'id' => (int) $existingUser['id'],
+                'password_hash' => password_hash((string) $body['password'], PASSWORD_DEFAULT),
+            ]);
+        } else {
+            $statement = $pdo->prepare(
+                "INSERT INTO users (email, password_hash, role, account_status)
+                 VALUES (:email, :password_hash, 'member', 'active')
+                 RETURNING id, role"
+            );
+            $statement->execute([
+                'email' => $email,
+                'password_hash' => password_hash((string) $body['password'], PASSWORD_DEFAULT),
+            ]);
+        }
     } catch (PDOException $error) {
         $pdo->rollBack();
         if ($error->getCode() === '23505') respond(['error' => 'An account with this email already exists.'], 409);
@@ -317,7 +341,11 @@ if ($method === 'POST' && $action === 'password-reset-request') {
     if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $pdo->beginTransaction();
         try {
-            $userStatement = $pdo->prepare('SELECT id, email FROM users WHERE email = :email FOR UPDATE');
+            $userStatement = $pdo->prepare(
+                "SELECT id, email FROM users
+                 WHERE email = :email AND account_status = 'active'
+                 FOR UPDATE"
+            );
             $userStatement->execute(['email' => $email]);
             $targetUser = $userStatement->fetch();
 
@@ -411,7 +439,11 @@ if ($method === 'POST' && $action === 'password-reset') {
         }
 
         // Keep the user-to-token lock order consistent with admin password changes.
-        $userStatement = $pdo->prepare('SELECT id, email FROM users WHERE id = :id FOR UPDATE');
+        $userStatement = $pdo->prepare(
+            "SELECT id, email FROM users
+             WHERE id = :id AND account_status = 'active'
+             FOR UPDATE"
+        );
         $userStatement->execute(['id' => (int) $reset['user_id']]);
         $targetUser = $userStatement->fetch();
         if (!$targetUser) {
@@ -477,18 +509,38 @@ if ($method === 'POST' && $action === 'admin-invitations') {
     $body = requestBody();
     required($body, ['email']);
     $email = strtolower(trim((string) $body['email']));
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        respond(['error' => 'E-mailadressen er ugyldig.'], 422);
+    }
+    $accountStatement = $pdo->prepare('SELECT id, account_status FROM users WHERE email = :email');
+    $accountStatement->execute(['email' => $email]);
+    $account = $accountStatement->fetch();
+    if ($account && $account['account_status'] === 'active') {
+        respond(['error' => 'Brugeren har allerede en aktiv konto.'], 409);
+    }
     $token = bin2hex(random_bytes(32));
-    $statement = $pdo->prepare(
-        "INSERT INTO invitations (email, token_hash, admin_token, expires_at)
-         VALUES (:email, :token_hash, :admin_token, NOW() + INTERVAL '7 days')
-         RETURNING id::text, email, expires_at::text AS \"expiresAt\""
-    );
-    $statement->execute([
-        'email' => $email,
-        'token_hash' => hash('sha256', $token),
-        'admin_token' => $token,
-    ]);
-    $invitation = $statement->fetch();
+    $pdo->beginTransaction();
+    try {
+        $statement = $pdo->prepare(
+            "INSERT INTO invitations (email, token_hash, admin_token, expires_at)
+             VALUES (:email, :token_hash, :admin_token, NOW() + INTERVAL '7 days')
+             RETURNING id::text, email, expires_at::text AS \"expiresAt\""
+        );
+        $statement->execute([
+            'email' => $email,
+            'token_hash' => hash('sha256', $token),
+            'admin_token' => $token,
+        ]);
+        $invitation = $statement->fetch();
+        if ($account) {
+            $pdo->prepare("UPDATE users SET account_status = 'invited' WHERE id = :id")
+                ->execute(['id' => (int) $account['id']]);
+        }
+        $pdo->commit();
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $error;
+    }
     $invitation['url'] = accountInvitationUrl($token);
     $subject = 'Velkommen til Partnerportalen - Ejendomsnetværket';
     $message = "Kære Partner,\n\n" .
@@ -1695,6 +1747,7 @@ if ($method === 'GET' && $action === 'admin-users') {
     requireAdmin();
     $search = trim((string) ($_GET['search'] ?? ''));
     $role = (string) ($_GET['role'] ?? '');
+    $accountStatus = (string) ($_GET['accountStatus'] ?? '');
     $groupFilter = trim((string) ($_GET['groupId'] ?? ''));
     $groupId = (int) $groupFilter;
     $requestedUserId = (int) ($_GET['userId'] ?? 0);
@@ -1710,6 +1763,10 @@ if ($method === 'GET' && $action === 'admin-users') {
     if ($role === 'admin' || $role === 'member') {
         $where[] = 'u.role = :role';
         $params['role'] = $role;
+    }
+    if (in_array($accountStatus, ['unclaimed', 'invited', 'active'], true)) {
+        $where[] = 'u.account_status = :account_status';
+        $params['account_status'] = $accountStatus;
     }
     if ($groupId > 0) {
         $where[] = 'EXISTS (SELECT 1 FROM group_members gm_filter WHERE gm_filter.user_id = u.id AND gm_filter.group_id = :filter_group_id)';
@@ -1735,7 +1792,7 @@ if ($method === 'GET' && $action === 'admin-users') {
     $count->execute();
     $total = (int) $count->fetchColumn();
     $users = $pdo->prepare(
-        'SELECT u.id::text, u.email, u.role,
+        'SELECT u.id::text, u.email, u.role, u.account_status AS "accountStatus",
                 COALESCE(string_agg(DISTINCT g.name, \', \' ORDER BY g.name), \'\') AS groups,
                 COALESCE(json_agg(DISTINCT gm.group_id::text) FILTER (WHERE gm.group_id IS NOT NULL), \'[]\'::json) AS "groupIds",
                 p.id::text AS "profileId", p.slug AS "profileSlug", p.name AS "profileName"
@@ -1766,8 +1823,9 @@ if ($method === 'POST' && $action === 'admin-users') {
     $body = requestBody();
     required($body, ['email', 'password']);
     $statement = $pdo->prepare(
-        'INSERT INTO users (email, password_hash, role) VALUES (:email, :password_hash, :role)
-         RETURNING id::text, email, role'
+        "INSERT INTO users (email, password_hash, role, account_status)
+         VALUES (:email, :password_hash, :role, 'active')
+         RETURNING id::text, email, role, account_status AS \"accountStatus\""
     );
     $statement->execute([
         'email' => strtolower(trim((string) $body['email'])),
@@ -1780,6 +1838,93 @@ if ($method === 'POST' && $action === 'admin-users') {
         $link->execute(['group_id' => (int) $groupId, 'user_id' => (int) $user['id']]);
     }
     respond(['user' => $user], 201);
+}
+
+if ($method === 'POST' && $action === 'admin-unclaimed-profile') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['email', 'name']);
+    $email = strtolower(trim((string) $body['email']));
+    $name = trim((string) $body['name']);
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        respond(['error' => 'E-mailadressen er ugyldig.'], 422);
+    }
+    if (strlen($name) > 300) respond(['error' => 'Navnet er for langt.'], 422);
+    $groupIds = idList($body, 'groupIds');
+    $labelIds = idList($body, 'labelIds');
+
+    $pdo->beginTransaction();
+    try {
+        $duplicate = $pdo->prepare(
+            'SELECT 1 FROM users WHERE LOWER(email) = LOWER(:user_email)
+             UNION ALL
+             SELECT 1 FROM partners WHERE LOWER(TRIM(email)) = LOWER(TRIM(:profile_email))
+             LIMIT 1'
+        );
+        $duplicate->execute(['user_email' => $email, 'profile_email' => $email]);
+        if ($duplicate->fetchColumn()) {
+            $pdo->rollBack();
+            respond(['error' => 'Der findes allerede en bruger eller profil med denne e-mailadresse.'], 409);
+        }
+
+        $userStatement = $pdo->prepare(
+            "INSERT INTO users (email, password_hash, role, account_status)
+             VALUES (:email, :password_hash, 'member', 'unclaimed')
+             RETURNING id::text, email, role, account_status AS \"accountStatus\""
+        );
+        $userStatement->execute([
+            'email' => $email,
+            'password_hash' => password_hash(bin2hex(random_bytes(32)), PASSWORD_DEFAULT),
+        ]);
+        $newUser = $userStatement->fetch();
+        $newUserId = (int) $newUser['id'];
+
+        $partnerStatement = $pdo->prepare(
+            'INSERT INTO partners
+                (user_id, slug, name, linkedin_url, company, company_url, email, phone, biography)
+             VALUES
+                (:user_id, :slug, :name, :linkedin, :company, :company_url, :email, :phone, :biography)
+             RETURNING id::text, slug, name'
+        );
+        $partnerStatement->execute([
+            'user_id' => $newUserId,
+            'slug' => slugify($name) . '-' . $newUserId,
+            'name' => $name,
+            'linkedin' => nullable($body, 'linkedin'),
+            'company' => nullable($body, 'company'),
+            'company_url' => nullable($body, 'companyUrl'),
+            'email' => $email,
+            'phone' => nullable($body, 'phone'),
+            'biography' => nullable($body, 'biography'),
+        ]);
+        $partner = $partnerStatement->fetch();
+
+        $groupStatement = $pdo->prepare(
+            'INSERT INTO group_members (group_id, user_id)
+             VALUES (:group_id, :user_id) ON CONFLICT DO NOTHING'
+        );
+        foreach ($groupIds as $groupId) {
+            $groupStatement->execute(['group_id' => $groupId, 'user_id' => $newUserId]);
+        }
+        $labelStatement = $pdo->prepare(
+            'INSERT INTO partner_profile_labels (partner_id, label_id)
+             VALUES (:partner_id, :label_id) ON CONFLICT DO NOTHING'
+        );
+        foreach ($labelIds as $labelId) {
+            $labelStatement->execute(['partner_id' => (int) $partner['id'], 'label_id' => $labelId]);
+        }
+        $pdo->commit();
+    } catch (PDOException $error) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($error->getCode() === '23505') {
+            respond(['error' => 'Der findes allerede en bruger eller profil med disse oplysninger.'], 409);
+        }
+        throw $error;
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $error;
+    }
+    respond(['user' => $newUser, 'partner' => $partner], 201);
 }
 
 if ($method === 'POST' && $action === 'admin-update-user') {
@@ -1797,16 +1942,46 @@ if ($method === 'POST' && $action === 'admin-update-user') {
     }
     $pdo->beginTransaction();
     try {
-        $statement = $pdo->prepare('UPDATE users SET email = :email, role = :role WHERE id = :id RETURNING id::text, email, role');
+        $existingStatement = $pdo->prepare(
+            'SELECT email, account_status FROM users WHERE id = :id FOR UPDATE'
+        );
+        $existingStatement->execute(['id' => $targetUserId]);
+        $existingUser = $existingStatement->fetch();
+        if (!$existingUser) {
+            $pdo->rollBack();
+            respond(['error' => 'Brugeren findes ikke.'], 404);
+        }
+        $updatedEmail = strtolower(trim((string) $body['email']));
+        $emailChanged = strcasecmp((string) $existingUser['email'], $updatedEmail) !== 0;
+        $nextStatus = $emailChanged && $existingUser['account_status'] === 'invited'
+            ? 'unclaimed'
+            : (string) $existingUser['account_status'];
+        $statement = $pdo->prepare(
+            'UPDATE users
+             SET email = :email, role = :role, account_status = :account_status
+             WHERE id = :id
+             RETURNING id::text, email, role, account_status AS "accountStatus"'
+        );
         $statement->execute([
             'id' => $targetUserId,
-            'email' => strtolower(trim((string) $body['email'])),
+            'email' => $updatedEmail,
             'role' => $role,
+            'account_status' => $nextStatus,
         ]);
         $userRow = $statement->fetch();
         if (!$userRow) {
             $pdo->rollBack();
             respond(['error' => 'Brugeren findes ikke.'], 404);
+        }
+        $pdo->prepare('UPDATE partners SET email = :email WHERE user_id = :user_id')->execute([
+            'email' => $updatedEmail,
+            'user_id' => $targetUserId,
+        ]);
+        if ($emailChanged && $existingUser['account_status'] === 'invited') {
+            $pdo->prepare(
+                'UPDATE invitations SET used_at = NOW()
+                 WHERE LOWER(email) = LOWER(:email) AND used_at IS NULL'
+            )->execute(['email' => (string) $existingUser['email']]);
         }
         $delete = $pdo->prepare('DELETE FROM group_members WHERE user_id = :user_id');
         $delete->execute(['user_id' => $targetUserId]);
@@ -1834,12 +2009,16 @@ if ($method === 'POST' && $action === 'admin-password-reset-link') {
     $token = bin2hex(random_bytes(32));
     $pdo->beginTransaction();
     try {
-        $userStatement = $pdo->prepare('SELECT id, email FROM users WHERE id = :id FOR UPDATE');
+        $userStatement = $pdo->prepare(
+            "SELECT id, email FROM users
+             WHERE id = :id AND account_status = 'active'
+             FOR UPDATE"
+        );
         $userStatement->execute(['id' => $targetUserId]);
         $targetUser = $userStatement->fetch();
         if (!$targetUser) {
             $pdo->rollBack();
-            respond(['error' => 'Brugeren findes ikke.'], 404);
+            respond(['error' => 'Kun aktive brugere kan få et nulstillingslink.'], 422);
         }
         $pdo->prepare(
             'UPDATE password_reset_tokens SET used_at = NOW()
