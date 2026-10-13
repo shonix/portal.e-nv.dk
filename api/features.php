@@ -233,13 +233,13 @@ if ($method === 'POST' && $action === 'admin-group-bulletins') {
 
     if (($body['sendEmail'] ?? false) === true) {
         $recipientStatement = $pdo->prepare(
-            'SELECT DISTINCT u.email
+            "SELECT DISTINCT u.email
              FROM group_members gm
              JOIN users u ON u.id = gm.user_id
              WHERE gm.group_id = :group_id
                AND u.bulletin_emails_enabled
                AND u.account_status = 'active'
-             ORDER BY u.email'
+             ORDER BY u.email"
         );
         $recipientStatement->execute(['group_id' => $groupId]);
         $recipients = $recipientStatement->fetchAll(PDO::FETCH_COLUMN);
