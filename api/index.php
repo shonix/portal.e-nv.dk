@@ -542,6 +542,11 @@ if ($method === 'POST' && $action === 'delete-my-account') {
         $deleteInvitations = $pdo->prepare('DELETE FROM invitations WHERE LOWER(email) = LOWER(:email)');
         $deleteInvitations->execute(['email' => (string) $account['email']]);
 
+        $deleteGuestInvitations = $pdo->prepare(
+            'DELETE FROM meeting_guest_invitations WHERE LOWER(email) = LOWER(:email)'
+        );
+        $deleteGuestInvitations->execute(['email' => (string) $account['email']]);
+
         $deleteUser = $pdo->prepare('DELETE FROM users WHERE id = :id');
         $deleteUser->execute(['id' => $userId]);
         if ($deleteUser->rowCount() !== 1) {

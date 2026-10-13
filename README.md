@@ -17,8 +17,9 @@ committed as `xlsx.full.min.js`.
 - HTTPS in production
 
 ZipArchive is used to validate uploaded XLSX and DOCX files. Account invitations
-and password-reset messages can be sent through Resend or Microsoft Graph.
-Meeting invitations continue to use PHP's `mail()` function for now.
+password-reset messages, meeting invitations and group-bulletin notifications
+use the shared mail service in `api/mail.php`. The supported providers are
+Microsoft Graph, Resend and PHP `mail()` as a local fallback.
 
 ## Repository structure
 
@@ -37,6 +38,25 @@ xlsx.full.min.js             Browser-side XLSX parser
 
 The repository contains application code only. Database credentials, uploaded
 files and other runtime data must not be committed.
+
+## Current portal behaviour
+
+- Administrators can invite groups, individual portal users and external guests
+  from `admin-moedeinvitationer.html`.
+- The invitation subject and message can be edited per send using the supported
+  placeholders `{{navn}}`, `{{møde}}`, `{{dato}}`, `{{tid}}` and `{{adresse}}`.
+  The application adds the recipient's personal RSVP link after the editable
+  message; the link must not be entered into the template manually.
+- External guests receive a unique, expiring RSVP link and can accept or decline
+  on `gaesteinvitation.html` without creating a portal account. Administrators
+  can follow portal-user and external-guest responses on the same invitation
+  page.
+- Automated portal emails include a link to the recipient's profile settings.
+  Users can disable group-bulletin emails there. Meeting invitations and account
+  emails are transactional and are not controlled by that bulletin preference.
+- Users can permanently delete their own account from the bottom of the profile
+  page after confirming their current password. Related personal portal data is
+  removed, and the final administrator account cannot delete itself.
 
 ## External address service
 
@@ -120,8 +140,8 @@ Configuration fields:
 | `user` | Yes | PostgreSQL username. |
 | `password` | Yes | PostgreSQL password. |
 | `portal_base_url` | Yes | Public portal URL used when generating invitation and password-reset links. |
-| `mail_from` | For meeting mail | Sender address passed to PHP `mail()` for meeting invitations and used by the local fallback. |
-| `mail` | For transactional mail | Provider credentials, sender and reply-to settings for account invitations, password resets and group-bulletin emails. Supported providers are `resend`, `microsoft_graph` and the local `php_mail` fallback. |
+| `mail_from` | For local fallback | Backwards-compatible sender address used when the shared mail service falls back to PHP `mail()`. |
+| `mail` | For transactional mail | Provider credentials, sender and reply-to settings for account invitations, password resets, meeting invitations and group-bulletin emails. Supported providers are `resend`, `microsoft_graph` and the local `php_mail` fallback. |
 | `meeting_attachment_dir` | Recommended | Private storage path for meeting attachments. |
 | `meeting_attachment_max_bytes` | No | Attachment limit in bytes; defaults to 10 MB. |
 | `meeting_picture_dir` | Recommended | Private storage path for meeting cover pictures. |
@@ -171,6 +191,7 @@ the migrations that have not previously been applied, in numeric order:
 | 019 | Per-user preference for group-bulletin emails |
 | 020 | Group descriptions and cover-picture metadata |
 | 021 | Meeting cover-picture metadata |
+| 022 | External meeting-guest invitations, hashed RSVP tokens, delivery status and responses |
 
 The project does not yet have a migration ledger. Record the last applied
 migration as part of the deployment notes. Back up the database before applying
@@ -251,11 +272,16 @@ Run PHP syntax checks before deployment:
 find api database -name '*.php' -exec php -l {} \;
 ```
 
-The main JavaScript files can be parsed with Node.js when it is available:
+Parse the shared JavaScript and every inline page script with Node.js:
 
 ```bash
-node --check portal-data.js
-node --check portal-header.js
+node scripts/check-frontend.js
+```
+
+Run the lightweight regression checks with PHP:
+
+```powershell
+Get-ChildItem tests\*.php | ForEach-Object { php $_.FullName }
 ```
 
 After deployment, verify at minimum:
@@ -291,7 +317,8 @@ unless the safety checks are deliberately changed.
 If GitHub Actions deployment is unavailable:
 
 1. Back up the current `portal/` directory and PostgreSQL database.
-2. Apply any required database migrations.
+2. Apply any required database migrations. This release requires migration 022
+   for external meeting-guest invitations.
 3. Run `pwsh -NoProfile -File scripts/build-deploy.ps1`.
 4. Upload the contents of `dist/portal/` to `portal/`.
 5. Do not modify `portal-config.php`, `portal-private/` or `public_html/`.

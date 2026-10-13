@@ -9,11 +9,12 @@ $checks = [
     'portal-data.js' => ['uploadMeetingPicture:function', 'deleteMeetingPicture:function'],
     'admin-moede-indstillinger.html' => ['id="meeting-cover-input"', 'id="upload-meeting-cover"'],
     'index.html' => ['class="meeting-date"', 'meeting.coverImageUrl', 'data-month=', 'meeting-month-filters', 'all-months-filter', 'month-prev', 'month-next', 'monthWindowSize', 'role="tablist"', 'group-pagination', 'meeting-pagination', 'pageSize = 8'],
-    'moede.html' => ['meeting.coverImageUrl'],
+    'moede.html' => ['meeting.coverImageUrl', 'id="cover-self-guest"', 'id="self-guest-button"'],
 ];
 
 $forbidden = [
     'index.html' => ['data-filter="all"', 'selectedMeetingStatus === "all"'],
+    'moede.html' => ['id="partner-module"', 'PortalData.meetingPartners(', '<strong>Partnere</strong>'],
 ];
 
 $failures = [];
@@ -34,6 +35,15 @@ foreach ($forbidden as $file => $needles) {
     foreach ($needles as $needle) {
         if (str_contains($contents, $needle)) $failures[] = "{$file} må ikke indeholde {$needle}.";
     }
+}
+
+$meetingPage = file_get_contents($root . '/moede.html') ?: '';
+$coverStart = strpos($meetingPage, '<header class="cover">');
+$coverEnd = strpos($meetingPage, '</header>', $coverStart === false ? 0 : $coverStart);
+$selfGuestButton = strpos($meetingPage, 'id="self-guest-button"');
+if ($coverStart === false || $coverEnd === false || $selfGuestButton === false
+    || $selfGuestButton < $coverStart || $selfGuestButton > $coverEnd) {
+    $failures[] = 'Knappen til egen gæstetilmelding skal ligge i mødeheaderen.';
 }
 
 if ($failures !== []) {

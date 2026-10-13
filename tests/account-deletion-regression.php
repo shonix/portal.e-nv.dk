@@ -5,12 +5,13 @@ declare(strict_types=1);
 $root = dirname(__DIR__);
 $checks = [
     'api/mail.php' => ['portalMailPreferencesFooter', 'opdatere dine præferencer eller afmelde e-mails om nye opslag', '/min-profil.html'],
-    'api/features.php' => ['sendPortalMail(', "'Invitation: ' . \$meeting['title']"],
+    'api/features.php' => ['sendPortalMail(', 'renderMeetingInvitationTemplate('],
     'api/index.php' => [
         "\$action === 'delete-my-account'",
         'password_verify(',
         'DELETE FROM meeting_guests',
         'DELETE FROM invitations',
+        'DELETE FROM meeting_guest_invitations',
         'DELETE FROM users WHERE id = :id',
         'profilePictureStoredName',
         'session_destroy()',

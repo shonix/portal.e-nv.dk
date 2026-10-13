@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Mødeinvitation | Partnerportalen</title>
+  <link rel="stylesheet" href="portal-header.css?v=20260717-01">
+  <style>
+    :root{--navy:#15243a;--blue:#163674;--line:#d6dde3;--muted:#5d6b80;--page:#f5f7f9;--surface:#fff;--success:#237044;--danger:#a12626}
+    *{box-sizing:border-box}body{margin:0;background:var(--page);color:var(--navy);font-family:Arial,Helvetica,sans-serif}
+    main{width:min(720px,calc(100% - 32px));margin:48px auto 72px}.card{overflow:hidden;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:0 14px 40px #15243a12}
+    .hero{padding:30px;background:linear-gradient(135deg,#12284e,#1f4f8f);color:#fff}.eyebrow{margin:0 0 8px;font-size:12px;font-weight:bold;letter-spacing:.1em;text-transform:uppercase;opacity:.78}
+    h1{margin:0 0 16px;font-size:clamp(28px,6vw,40px)}.meeting-meta{display:flex;flex-wrap:wrap;gap:8px 20px;margin:0;font-weight:bold}.meeting-address{margin:12px 0 0;color:#eef4ff}
+    .content{padding:28px}.greeting{font-size:18px}.details{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:22px 0}.detail{padding:14px;border:1px solid var(--line);border-radius:9px;background:#f8fafc}.detail strong{display:block;margin-bottom:5px;font-size:12px;text-transform:uppercase;letter-spacing:.05em}.detail span{color:var(--muted);line-height:1.45}
+    .actions{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:24px}button{min-height:48px;padding:11px 16px;border:1px solid var(--blue);border-radius:8px;background:var(--blue);color:#fff;font:inherit;font-weight:bold;cursor:pointer}.secondary{border-color:var(--line);background:#fff;color:var(--navy)}button:disabled{cursor:wait;opacity:.65}
+    .notice{min-height:24px;margin:18px 0 0;color:var(--muted);font-weight:bold}.notice.success{color:var(--success)}.notice.error{color:var(--danger)}.privacy{margin:24px 0 0;color:var(--muted);font-size:13px;line-height:1.5}
+    .loading{padding:40px;text-align:center;color:var(--muted)}
+    @media(max-width:560px){main{margin-top:24px}.hero,.content{padding:22px}.details,.actions{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <main>
+    <article class="card" id="invitation-card">
+      <p class="loading" id="loading">Henter invitationen...</p>
+      <div id="invitation" hidden>
+        <header class="hero">
+          <p class="eyebrow">Personlig mødeinvitation</p>
+          <h1 id="title"></h1>
+          <p class="meeting-meta"><span id="date"></span><span id="time"></span></p>
+          <p class="meeting-address" id="address"></p>
+        </header>
+        <section class="content">
+          <p class="greeting">Hej <strong id="guest-name"></strong></p>
+          <p>Du er inviteret til mødet ovenfor. Giv os gerne besked om, hvorvidt du deltager.</p>
+          <div class="details">
+            <div class="detail"><strong>Virksomhed</strong><span id="company"></span></div>
+            <div class="detail"><strong>Invitation sendt til</strong><span id="email"></span></div>
+          </div>
+          <div class="actions" id="actions">
+            <button type="button" data-response="attending">Jeg deltager</button>
+            <button type="button" class="secondary" data-response="not_attending">Jeg deltager ikke</button>
+          </div>
+          <p class="notice" id="notice" role="status"></p>
+          <p class="privacy">Linket er personligt og må ikke deles. Du behøver ikke oprette en bruger på Partnerportalen for at svare.</p>
+        </section>
+      </div>
+    </article>
+  </main>
+  <script src="portal-data.js?v=20261013-02"></script><script src="portal-header.js?v=20260811-04"></script>
+  <script>
+    var token = new URLSearchParams(location.search).get("token") || "";
+    var notice = document.getElementById("notice");
+    function responseText(response) {
+      return response === "attending" ? "Du er tilmeldt mødet." : response === "not_attending" ? "Du har meldt afbud." : "";
+    }
+    function setResponse(response) {
+      document.querySelectorAll("[data-response]").forEach(function(button) {
+        button.disabled = false;
+        button.setAttribute("aria-pressed", String(button.dataset.response === response));
+      });
+      notice.textContent = responseText(response);
+      notice.className = response ? "notice success" : "notice";
+    }
+    PortalData.guestMeetingInvitation(token).then(function(result) {
+      var invitation = result.invitation;
+      document.title = invitation.title + " | Mødeinvitation";
+      document.getElementById("title").textContent = invitation.title;
+      document.getElementById("date").textContent = new Date(invitation.date + "T00:00:00").toLocaleDateString("da-DK", {day:"numeric",month:"long",year:"numeric"});
+      document.getElementById("time").textContent = "kl. " + invitation.time;
+      document.getElementById("address").textContent = invitation.address;
+      document.getElementById("guest-name").textContent = invitation.name;
+      document.getElementById("company").textContent = invitation.company || "Ikke angivet";
+      document.getElementById("email").textContent = invitation.email;
+      document.getElementById("loading").hidden = true;
+      document.getElementById("invitation").hidden = false;
+      if (invitation.status === "cancelled") {
+        document.getElementById("actions").hidden = true;
+        notice.textContent = "Mødet er aflyst.";
+        notice.className = "notice error";
+      } else if (invitation.expired) {
+        document.getElementById("actions").hidden = true;
+        notice.textContent = "Invitationen er udløbet.";
+        notice.className = "notice error";
+      } else {
+        setResponse(invitation.response);
+      }
+    }).catch(function(error) {
+      document.getElementById("loading").textContent = error.message;
+      document.getElementById("loading").className = "loading notice error";
+    });
+    document.querySelectorAll("[data-response]").forEach(function(button) {
+      button.onclick = async function() {
+        document.querySelectorAll("[data-response]").forEach(function(item) { item.disabled = true; });
+        notice.textContent = "Gemmer dit svar...";
+        notice.className = "notice";
+        try {
+          var result = await PortalData.saveGuestMeetingRsvp(token, button.dataset.response);
+          setResponse(result.response);
+        } catch (error) {
+          document.querySelectorAll("[data-response]").forEach(function(item) { item.disabled = false; });
+          notice.textContent = error.message;
+          notice.className = "notice error";
+        }
+      };
+    });
+  </script>
+</body>
+</html>

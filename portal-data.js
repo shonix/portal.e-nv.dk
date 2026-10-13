@@ -52,6 +52,8 @@
     meetingInvitations:function(meetingId){return request("admin-meeting-invitations",null,{meetingId:meetingId});},
     saveMeetingSettings:function(meetingId,approvalMode){return post("admin-meeting-settings",{meetingId:meetingId,approvalMode:approvalMode});},
     sendMeetingInvitations:function(data){return post("admin-send-meeting-invitations",data);},
+    guestMeetingInvitation:function(token){return request("guest-meeting-invitation",null,{token:token});},
+    saveGuestMeetingRsvp:function(token,response){return post("guest-meeting-rsvp",{token:token,response:response});},
     rotateMeetingInvitation:function(meetingId){return post("admin-rotate-meeting-invitation",{meetingId:meetingId});},
     meetingInvitation:function(token){return request("meeting-invitation",null,{token:token});},
     saveMeetingRsvp:function(token,response){return post("meeting-rsvp",{token:token,response:response});},

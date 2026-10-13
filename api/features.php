@@ -7,6 +7,17 @@ function portalUrl(string $path): string
     return portalBaseUrl($config) . '/' . ltrim($path, '/');
 }
 
+function renderMeetingInvitationTemplate(string $template, string $recipientName, array $meeting): string
+{
+    return strtr($template, [
+        '{{navn}}' => $recipientName,
+        '{{møde}}' => (string) $meeting['title'],
+        '{{dato}}' => (string) $meeting['meeting_date'],
+        '{{tid}}' => (string) $meeting['meeting_time'],
+        '{{adresse}}' => (string) $meeting['address'],
+    ]);
+}
+
 function attachmentDirectory(array $config): string
 {
     return (string) ($config['meeting_attachment_dir'] ?? (dirname(__DIR__, 2) . '/portal-private/meeting-attachments'));
@@ -355,8 +366,22 @@ if ($method === 'GET' && $action === 'admin-meeting-invitations') {
          ORDER BY COALESCE(p.name, u.email)'
     );
     $recipients->execute(['meeting_id' => $meetingId]);
+    $guestRecipients = $pdo->prepare(
+        'SELECT id::text, name, company, email,
+                invited_at::text AS "invitedAt", email_sent_at::text AS "emailSentAt",
+                email_status AS "emailStatus", email_error AS "emailError",
+                response, responded_at::text AS "respondedAt"
+         FROM meeting_guest_invitations
+         WHERE meeting_id = :meeting_id
+         ORDER BY name, email'
+    );
+    $guestRecipients->execute(['meeting_id' => $meetingId]);
     $row['url'] = $row['token'] ? portalUrl('moede-invitation.html?token=' . urlencode($row['token'])) : null;
-    respond(['meeting' => $row, 'recipients' => $recipients->fetchAll()]);
+    respond([
+        'meeting' => $row,
+        'recipients' => $recipients->fetchAll(),
+        'guestRecipients' => $guestRecipients->fetchAll(),
+    ]);
 }
 
 if ($method === 'POST' && $action === 'admin-meeting-settings') {
@@ -390,6 +415,14 @@ if ($method === 'POST' && $action === 'admin-send-meeting-invitations') {
     $meetingQuery->execute(['id' => $meetingId]);
     $meeting = $meetingQuery->fetch();
     if (!$meeting) respond(['error' => 'Mødet findes ikke.'], 404);
+    $subjectTemplate = trim((string) ($body['mailSubject'] ?? 'Invitation: {{møde}}'));
+    $messageTemplate = trim((string) ($body['mailMessage'] ?? "Hej {{navn}}\n\nDu er inviteret til {{møde}}.\n\nDato: {{dato}} kl. {{tid}}\nAdresse: {{adresse}}"));
+    if ($subjectTemplate === '' || strlen($subjectTemplate) > 200 || preg_match('/[\r\n]/', $subjectTemplate)) {
+        respond(['error' => 'E-mailens emne er ugyldigt eller for langt.'], 422);
+    }
+    if ($messageTemplate === '' || strlen($messageTemplate) > 10000) {
+        respond(['error' => 'E-mailens besked er tom eller for lang.'], 422);
+    }
     $token = (string) ($meeting['invitation_token'] ?? '');
     if ($token === '') {
         $token = bin2hex(random_bytes(24));
@@ -404,11 +437,41 @@ if ($method === 'POST' && $action === 'admin-send-meeting-invitations') {
         $groupUsers->execute($groupIds);
         $userIds = array_values(array_unique(array_merge($userIds, array_map('intval', $groupUsers->fetchAll(PDO::FETCH_COLUMN)))));
     }
-    if (!$userIds) respond(['error' => 'Vælg mindst én modtager.'], 422);
-    $placeholders = implode(',', array_fill(0, count($userIds), '?'));
-    $users = $pdo->prepare("SELECT id, email FROM users WHERE id IN ($placeholders) ORDER BY email");
-    $users->execute($userIds);
-    $recipientRows = $users->fetchAll();
+    $guestRecipients = [];
+    $guestInput = $body['guestRecipients'] ?? [];
+    if (!is_array($guestInput)) respond(['error' => 'Gæstelisten er ugyldig.'], 422);
+    if (count($guestInput) > 500) respond(['error' => 'Der kan højst inviteres 500 eksterne gæster ad gangen.'], 422);
+    foreach ($guestInput as $guest) {
+        if (!is_array($guest)) continue;
+        $name = trim((string) ($guest['name'] ?? ''));
+        $company = trim((string) ($guest['company'] ?? ''));
+        $email = strtolower(trim((string) ($guest['email'] ?? '')));
+        if ($name === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            respond(['error' => 'Alle eksterne gæster skal have navn og en gyldig e-mailadresse.'], 422);
+        }
+        $guestRecipients[$email] = ['name' => $name, 'company' => $company, 'email' => $email];
+    }
+    if (!$userIds && !$guestRecipients) respond(['error' => 'Vælg mindst én modtager.'], 422);
+    $recipientRows = [];
+    if ($userIds) {
+        $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+        $users = $pdo->prepare(
+            "SELECT u.id, u.email, COALESCE(NULLIF(TRIM(profile.name), ''), u.email) AS name
+             FROM users u
+             LEFT JOIN LATERAL (
+                 SELECT candidate.name
+                 FROM partners candidate
+                 WHERE candidate.user_id = u.id
+                    OR (candidate.user_id IS NULL AND LOWER(TRIM(candidate.email)) = LOWER(TRIM(u.email)))
+                 ORDER BY candidate.user_id NULLS LAST, candidate.id
+                 LIMIT 1
+             ) profile ON TRUE
+             WHERE u.id IN ($placeholders)
+             ORDER BY u.email"
+        );
+        $users->execute($userIds);
+        $recipientRows = $users->fetchAll();
+    }
     $link = portalUrl('moede-invitation.html?token=' . urlencode($token));
     $upsert = $pdo->prepare(
         "INSERT INTO meeting_invitation_recipients
@@ -419,15 +482,17 @@ if ($method === 'POST' && $action === 'admin-send-meeting-invitations') {
             email_status = EXCLUDED.email_status, email_error = EXCLUDED.email_error"
     );
     $results = [];
+    $registeredEmails = [];
     foreach ($recipientRows as $recipient) {
-        $message = "Hej\n\nDu er inviteret til " . $meeting['title'] . ".\n\n" .
-            "Dato: " . $meeting['meeting_date'] . " kl. " . $meeting['meeting_time'] . "\n" .
-            "Adresse: " . $meeting['address'] . "\n\nSvar på invitationen her:\n" . $link .
+        $registeredEmails[strtolower((string) $recipient['email'])] = true;
+        $subject = renderMeetingInvitationTemplate($subjectTemplate, (string) $recipient['name'], $meeting);
+        $message = renderMeetingInvitationTemplate($messageTemplate, (string) $recipient['name'], $meeting) .
+            "\n\nSvar på invitationen her:\n" . $link .
             "\n\nVenlig hilsen\nEjendomsnetværket";
         $mailResult = sendPortalMail(
             $config,
             (string) $recipient['email'],
-            'Invitation: ' . $meeting['title'],
+            $subject,
             $message
         );
         $sent = $mailResult['sent'];
@@ -439,9 +504,189 @@ if ($method === 'POST' && $action === 'admin-send-meeting-invitations') {
             'status' => $sent ? 'sent' : 'failed',
             'error' => $error,
         ]);
-        $results[] = ['userId' => (string) $recipient['id'], 'email' => $recipient['email'], 'sent' => $sent, 'error' => $error];
+        $results[] = ['recipientType' => 'portal', 'userId' => (string) $recipient['id'], 'email' => $recipient['email'], 'sent' => $sent, 'error' => $error];
+    }
+
+    $findGuestInvitation = $pdo->prepare(
+        'SELECT id FROM meeting_guest_invitations
+         WHERE meeting_id = :meeting_id AND LOWER(email) = LOWER(:email)'
+    );
+    $insertGuestInvitation = $pdo->prepare(
+        'INSERT INTO meeting_guest_invitations
+            (meeting_id, name, company, email, token_hash, expires_at, invited_at, email_status)
+         VALUES (:meeting_id, :name, :company, :email, :token_hash, :expires_at, NOW(), \'pending\')
+         RETURNING id'
+    );
+    $updateGuestInvitation = $pdo->prepare(
+        'UPDATE meeting_guest_invitations
+         SET name = :name, company = :company, token_hash = :token_hash,
+             expires_at = :expires_at, invited_at = NOW(), email_status = \'pending\', email_error = NULL
+         WHERE id = :id'
+    );
+    $updateGuestDelivery = $pdo->prepare(
+        'UPDATE meeting_guest_invitations
+         SET email_sent_at = :sent_at, email_status = :status, email_error = :error
+         WHERE id = :id'
+    );
+    $meetingEnd = strtotime((string) $meeting['meeting_date'] . ' +1 day') ?: 0;
+    $expiresAt = date('c', max(time() + 7 * 86400, $meetingEnd));
+    foreach ($guestRecipients as $guest) {
+        if (isset($registeredEmails[$guest['email']])) continue;
+        $guestToken = bin2hex(random_bytes(32));
+        $guestTokenHash = hash('sha256', $guestToken);
+        $findGuestInvitation->execute(['meeting_id' => $meetingId, 'email' => $guest['email']]);
+        $guestInvitationId = (int) ($findGuestInvitation->fetchColumn() ?: 0);
+        if ($guestInvitationId > 0) {
+            $updateGuestInvitation->execute([
+                'name' => $guest['name'],
+                'company' => $guest['company'] !== '' ? $guest['company'] : null,
+                'token_hash' => $guestTokenHash,
+                'expires_at' => $expiresAt,
+                'id' => $guestInvitationId,
+            ]);
+        } else {
+            $insertGuestInvitation->execute([
+                'meeting_id' => $meetingId,
+                'name' => $guest['name'],
+                'company' => $guest['company'] !== '' ? $guest['company'] : null,
+                'email' => $guest['email'],
+                'token_hash' => $guestTokenHash,
+                'expires_at' => $expiresAt,
+            ]);
+            $guestInvitationId = (int) $insertGuestInvitation->fetchColumn();
+        }
+        $guestLink = portalUrl('gaesteinvitation.html?token=' . urlencode($guestToken));
+        $subject = renderMeetingInvitationTemplate($subjectTemplate, $guest['name'], $meeting);
+        $message = renderMeetingInvitationTemplate($messageTemplate, $guest['name'], $meeting) .
+            "\n\nSvar på invitationen her:\n" . $guestLink .
+            "\n\nDu behøver ikke en bruger på Partnerportalen for at svare.\n\nVenlig hilsen\nEjendomsnetværket";
+        $mailResult = sendPortalMail(
+            $config,
+            $guest['email'],
+            $subject,
+            $message,
+            [],
+            false
+        );
+        $sent = $mailResult['sent'];
+        $error = $mailResult['error'];
+        $updateGuestDelivery->execute([
+            'sent_at' => $sent ? date('c') : null,
+            'status' => $sent ? 'sent' : 'failed',
+            'error' => $error,
+            'id' => $guestInvitationId,
+        ]);
+        $results[] = [
+            'recipientType' => 'guest',
+            'guestInvitationId' => (string) $guestInvitationId,
+            'email' => $guest['email'],
+            'sent' => $sent,
+            'error' => $error,
+        ];
     }
     respond(['url' => $link, 'results' => $results]);
+}
+
+if ($method === 'GET' && $action === 'guest-meeting-invitation') {
+    $token = trim((string) ($_GET['token'] ?? ''));
+    if ($token === '') respond(['error' => 'Invitationslinket mangler.'], 422);
+    $statement = $pdo->prepare(
+        'SELECT m.id::text AS "meetingId", m.title, m.meeting_date::text AS date,
+                to_char(m.meeting_time, \'HH24:MI\') AS time, m.address, m.status,
+                m.program_text AS program, m.location_text AS location,
+                gi.name, gi.company, gi.email, gi.response,
+                CASE WHEN gi.expires_at < NOW() THEN 1 ELSE 0 END AS expired
+         FROM meeting_guest_invitations gi
+         JOIN meetings m ON m.id = gi.meeting_id
+         WHERE gi.token_hash = :token_hash'
+    );
+    $statement->execute(['token_hash' => hash('sha256', $token)]);
+    $invitation = $statement->fetch();
+    if (!$invitation) respond(['error' => 'Invitationen findes ikke.'], 404);
+    $invitation['expired'] = (bool) $invitation['expired'];
+    respond(['invitation' => $invitation]);
+}
+
+if ($method === 'POST' && $action === 'guest-meeting-rsvp') {
+    $body = requestBody();
+    required($body, ['token', 'response']);
+    if (!in_array($body['response'], ['attending', 'not_attending'], true)) {
+        respond(['error' => 'Ugyldigt svar.'], 422);
+    }
+    $pdo->beginTransaction();
+    try {
+        $statement = $pdo->prepare(
+            'SELECT gi.id, gi.meeting_id, gi.guest_id, gi.name, gi.company, gi.email,
+                    gi.guest_created_by_invitation, gi.expires_at, m.status
+             FROM meeting_guest_invitations gi
+             JOIN meetings m ON m.id = gi.meeting_id
+             WHERE gi.token_hash = :token_hash
+             FOR UPDATE'
+        );
+        $statement->execute(['token_hash' => hash('sha256', (string) $body['token'])]);
+        $invitation = $statement->fetch();
+        if (!$invitation) {
+            $pdo->rollBack();
+            respond(['error' => 'Invitationen findes ikke.'], 404);
+        }
+        if (strtotime((string) $invitation['expires_at']) < time()) {
+            $pdo->rollBack();
+            respond(['error' => 'Invitationen er udløbet.'], 422);
+        }
+        if ($invitation['status'] === 'cancelled') {
+            $pdo->rollBack();
+            respond(['error' => 'Mødet er aflyst.'], 422);
+        }
+
+        $guestId = (int) ($invitation['guest_id'] ?? 0);
+        $createdByInvitation = (bool) $invitation['guest_created_by_invitation'];
+        if ($body['response'] === 'attending' && $guestId <= 0) {
+            $existingGuest = $pdo->prepare(
+                'SELECT id FROM meeting_guests
+                 WHERE meeting_id = :meeting_id AND LOWER(email) = LOWER(:email)
+                 ORDER BY id LIMIT 1'
+            );
+            $existingGuest->execute(['meeting_id' => (int) $invitation['meeting_id'], 'email' => $invitation['email']]);
+            $guestId = (int) ($existingGuest->fetchColumn() ?: 0);
+            if ($guestId <= 0) {
+                $insertGuest = $pdo->prepare(
+                    'INSERT INTO meeting_guests (meeting_id, name, company, email)
+                     VALUES (:meeting_id, :name, :company, :email)
+                     RETURNING id'
+                );
+                $insertGuest->execute([
+                    'meeting_id' => (int) $invitation['meeting_id'],
+                    'name' => (string) $invitation['name'],
+                    'company' => trim((string) ($invitation['company'] ?? '')),
+                    'email' => (string) $invitation['email'],
+                ]);
+                $guestId = (int) $insertGuest->fetchColumn();
+                $createdByInvitation = true;
+            }
+        } elseif ($body['response'] === 'not_attending' && $guestId > 0 && $createdByInvitation) {
+            $deleteGuest = $pdo->prepare('DELETE FROM meeting_guests WHERE id = :id');
+            $deleteGuest->execute(['id' => $guestId]);
+            $guestId = 0;
+            $createdByInvitation = false;
+        }
+
+        $update = $pdo->prepare(
+            'UPDATE meeting_guest_invitations
+             SET response = :response, responded_at = NOW(), guest_id = :guest_id,
+                 guest_created_by_invitation = :created_by_invitation
+             WHERE id = :id'
+        );
+        $update->bindValue(':response', $body['response'], PDO::PARAM_STR);
+        $update->bindValue(':guest_id', $guestId > 0 ? $guestId : null, $guestId > 0 ? PDO::PARAM_INT : PDO::PARAM_NULL);
+        $update->bindValue(':created_by_invitation', $createdByInvitation, PDO::PARAM_BOOL);
+        $update->bindValue(':id', (int) $invitation['id'], PDO::PARAM_INT);
+        $update->execute();
+        $pdo->commit();
+        respond(['response' => $body['response']]);
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $error;
+    }
 }
 
 if ($method === 'POST' && $action === 'admin-rotate-meeting-invitation') {

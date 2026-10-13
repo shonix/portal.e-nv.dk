@@ -26,6 +26,7 @@ admin-profil.html
 admin.html
 favicon.svg
 glemt-adgangskode.html
+gaesteinvitation.html
 gruppe.html
 index.html
 login.html

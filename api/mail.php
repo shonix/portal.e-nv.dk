@@ -288,14 +288,20 @@ function sendPortalMail(
     string $to,
     string $subject,
     string $body,
-    array $attachments = []
+    array $attachments = [],
+    bool $includePreferencesFooter = true
 ): array
 {
     if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
         return portalMailFailure('Modtagerens e-mailadresse er ugyldig.', 'Invalid recipient address.');
     }
 
-    $body = rtrim($body) . portalMailPreferencesFooter($config);
+    $subject = trim((string) preg_replace('/[\r\n]+/', ' ', $subject));
+    if ($subject === '') {
+        return portalMailFailure('E-mailens emne mangler.', 'Mail subject is empty.');
+    }
+    $body = rtrim($body);
+    if ($includePreferencesFooter) $body .= portalMailPreferencesFooter($config);
 
     $settings = portalMailSettings($config);
     $attachmentResult = portalPrepareMailAttachments($attachments);
