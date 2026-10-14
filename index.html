@@ -588,23 +588,16 @@
   <header class="portal-intro">
     <p class="eyebrow">Netværk</p>
     <h1 class="portal-title">Partnerportalen</h1>
-    <p class="portal-description">Find dine netværksgrupper og hold dig opdateret om kommende møder.</p>
+    <p class="portal-description">Hold dig opdateret om kommende møder og find dine netværksgrupper.</p>
   </header>
 
   <div class="mobile-section-tabs" role="tablist" aria-label="Vælg indhold">
-    <button class="active" type="button" role="tab" aria-selected="true" aria-controls="groups-panel" data-mobile-section="groups">Grupper</button>
-    <button type="button" role="tab" aria-selected="false" aria-controls="meetings-panel" data-mobile-section="meetings">Møder</button>
+    <button class="active" type="button" role="tab" aria-selected="true" aria-controls="meetings-panel" data-mobile-section="meetings">Møder</button>
+    <button type="button" role="tab" aria-selected="false" aria-controls="groups-panel" data-mobile-section="groups">Grupper</button>
   </div>
 
   <div class="portal-grid">
-    <section class="portal-panel active-mobile-panel" id="groups-panel" role="tabpanel" data-mobile-panel="groups">
-      <h2 class="portal-heading">Grupper</h2>
-
-      <div class="group-list" id="group-list"></div>
-      <nav class="pagination" id="group-pagination" aria-label="Gruppesider"></nav>
-    </section>
-
-    <section class="portal-panel" id="meetings-panel" role="tabpanel" data-mobile-panel="meetings" hidden>
+    <section class="portal-panel active-mobile-panel" id="meetings-panel" role="tabpanel" data-mobile-panel="meetings">
       <h2 class="portal-heading">Årets møder</h2>
 
       <div class="filters">
@@ -626,6 +619,13 @@
 
       <div class="meeting-list" id="meeting-list"></div>
       <nav class="pagination" id="meeting-pagination" aria-label="Mødesider"></nav>
+    </section>
+
+    <section class="portal-panel" id="groups-panel" role="tabpanel" data-mobile-panel="groups" hidden>
+      <h2 class="portal-heading">Grupper</h2>
+
+      <div class="group-list" id="group-list"></div>
+      <nav class="pagination" id="group-pagination" aria-label="Gruppesider"></nav>
     </section>
   </div>
 </div>
@@ -805,6 +805,7 @@
       setMobileSection(button.dataset.mobileSection);
     });
   });
+  setMobileSection("meetings");
 </script>
 </body>
 </html>

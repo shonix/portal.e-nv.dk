@@ -8,7 +8,7 @@ $checks = [
     'api/index.php' => ['admin-meeting-picture', 'admin-delete-meeting-picture', "action === 'meeting-picture'", 'attachMeetingCoverUrl'],
     'portal-data.js' => ['uploadMeetingPicture:function', 'deleteMeetingPicture:function'],
     'admin-moede-indstillinger.html' => ['id="meeting-cover-input"', 'id="upload-meeting-cover"'],
-    'index.html' => ['class="meeting-date"', 'meeting.coverImageUrl', 'data-month=', 'meeting-month-filters', 'all-months-filter', 'month-prev', 'month-next', 'monthWindowSize', 'role="tablist"', 'group-pagination', 'meeting-pagination', 'pageSize = 8'],
+    'index.html' => ['class="meeting-date"', 'meeting.coverImageUrl', 'data-month=', 'meeting-month-filters', 'all-months-filter', 'month-prev', 'month-next', 'monthWindowSize', 'role="tablist"', 'group-pagination', 'meeting-pagination', 'pageSize = 8', 'data-mobile-section="meetings">Møder</button>', 'id="meetings-panel" role="tabpanel" data-mobile-panel="meetings"', 'setMobileSection("meetings");'],
     'moede.html' => ['meeting.coverImageUrl', 'id="cover-self-guest"', 'id="self-guest-button"'],
 ];
 
