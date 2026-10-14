@@ -24,6 +24,8 @@ return [
     'partner_material_max_bytes' => 26214400,
     'profile_picture_dir' => __DIR__ . '/portal-private/profile-pictures',
     'profile_picture_max_bytes' => 2097152,
+    'profile_cover_dir' => __DIR__ . '/portal-private/profile-covers',
+    'profile_cover_max_bytes' => 5242880,
     'group_picture_dir' => __DIR__ . '/portal-private/group-pictures',
     'group_picture_max_bytes' => 5242880,
 ];

@@ -14,6 +14,8 @@ $checks = [
         'DELETE FROM meeting_guest_invitations',
         'DELETE FROM users WHERE id = :id',
         'profilePictureStoredName',
+        'profileCoverStoredName',
+        'profileCoverDirectory',
         'session_destroy()',
     ],
     'portal-data.js' => ['deleteMyAccount:function'],

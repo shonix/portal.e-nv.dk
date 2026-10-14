@@ -33,6 +33,7 @@
     labels:async function(){return (await request("labels")).labels;},
     myProfile:async function(){return (await request("my-profile")).partner;}, myProfileSettings:function(){return request("my-profile");}, saveMyProfile:function(data){return post("my-profile",data);}, deleteMyAccount:function(password){return post("delete-my-account",{password:password});},
     uploadProfilePicture:function(file){var data=new FormData();data.append("file",file,file.name||"profile-picture.jpg");return request("profile-picture",{method:"POST",body:data});},
+    uploadProfileCover:function(file){var data=new FormData();data.append("file",file,file.name||"profile-cover.jpg");return request("profile-cover",{method:"POST",body:data});}, deleteProfileCover:function(){return post("delete-profile-cover",{});},
     adminProfile:function(userId){return request("admin-profile",null,{userId:userId});}, saveAdminProfile:function(data){return post("admin-profile",data);},
     adminUsers:function(parameters){return request("admin-users",null,parameters);}, addUser:function(data){return post("admin-users",data);}, addUnclaimedProfile:function(data){return post("admin-unclaimed-profile",data);},
     updateUser:function(data){return post("admin-update-user",data);}, deleteUser:function(userId){return post("admin-delete-user",{userId:userId});},

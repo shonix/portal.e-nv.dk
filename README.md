@@ -62,6 +62,8 @@ files and other runtime data must not be committed.
 - Users can permanently delete their own account from the bottom of the profile
   page after confirming their current password. Related personal portal data is
   removed, and the final administrator account cannot delete itself.
+- Users can upload an optional wide cover photo for their partner profile and
+  remove it again to restore the standard gradient background.
 - Each group page shows a two-column industry overview with counts and scrollable
   lists for industries represented in the group and industries still missing.
   Both lists are calculated from the existing profile labels and require no
@@ -101,6 +103,7 @@ hosting-root/
     meeting-pictures/
     partner-materials/
     profile-pictures/
+    profile-covers/
     group-pictures/
   public_html/               Main website; unrelated to portal deployment
 ```
@@ -109,7 +112,7 @@ Only the contents of the repository's public application are deployed to
 `portal/`. A portal deployment must never replace or delete `portal-config.php`,
 `portal-private/` or `public_html/`.
 
-The PHP process must have write access to the five directories inside
+The PHP process must have write access to the six directories inside
 `portal-private/`. The application creates them with restrictive permissions if
 they do not already exist.
 
@@ -144,6 +147,8 @@ return [
     'partner_material_max_bytes' => 26214400,
     'profile_picture_dir' => __DIR__ . '/portal-private/profile-pictures',
     'profile_picture_max_bytes' => 2097152,
+    'profile_cover_dir' => __DIR__ . '/portal-private/profile-covers',
+    'profile_cover_max_bytes' => 5242880,
     'group_picture_dir' => __DIR__ . '/portal-private/group-pictures',
     'group_picture_max_bytes' => 5242880,
 ];
@@ -167,6 +172,8 @@ Configuration fields:
 | `partner_material_max_bytes` | No | Partner-material limit in bytes; defaults to 25 MB. |
 | `profile_picture_dir` | Recommended | Private storage path for profile pictures. |
 | `profile_picture_max_bytes` | No | Profile-picture limit in bytes; defaults to 2 MB. |
+| `profile_cover_dir` | Recommended | Private storage path for profile cover pictures. |
+| `profile_cover_max_bytes` | No | Profile-cover limit in bytes; defaults to 5 MB. |
 | `group_picture_dir` | Recommended | Private storage path for group cover pictures. |
 | `group_picture_max_bytes` | No | Group-cover limit in bytes; defaults to 5 MB. |
 
@@ -210,6 +217,7 @@ the migrations that have not previously been applied, in numeric order:
 | 021 | Meeting cover-picture metadata |
 | 022 | External meeting-guest invitations, hashed RSVP tokens, delivery status and responses |
 | 023 | Account lifecycle for profiles created before invitation (`unclaimed`, `invited`, `active`) |
+| 024 | Partner-profile cover-picture metadata |
 
 The project does not yet have a migration ledger. Record the last applied
 migration as part of the deployment notes. Back up the database before applying
@@ -335,9 +343,8 @@ unless the safety checks are deliberately changed.
 If GitHub Actions deployment is unavailable:
 
 1. Back up the current `portal/` directory and PostgreSQL database.
-2. Apply any required database migrations. The current changes require
-   migrations 022 and 023 when upgrading a database that previously ended at
-   migration 021.
+2. Apply any required database migrations. Apply migration 024 when upgrading
+   from 023; a database that still ends at 021 needs migrations 022 through 024.
 3. Run `pwsh -NoProfile -File scripts/build-deploy.ps1`.
 4. Upload the contents of `dist/portal/` to `portal/`.
 5. Do not modify `portal-config.php`, `portal-private/` or `public_html/`.

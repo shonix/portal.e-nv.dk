@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS partners (
   profile_picture_stored_name TEXT UNIQUE,
   profile_picture_mime_type TEXT,
   profile_picture_size BIGINT,
+  profile_cover_stored_name TEXT UNIQUE,
+  profile_cover_mime_type TEXT,
+  profile_cover_size BIGINT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -99,7 +102,10 @@ ALTER TABLE users
 ALTER TABLE partners
   ADD COLUMN IF NOT EXISTS profile_picture_stored_name TEXT UNIQUE,
   ADD COLUMN IF NOT EXISTS profile_picture_mime_type TEXT,
-  ADD COLUMN IF NOT EXISTS profile_picture_size BIGINT;
+  ADD COLUMN IF NOT EXISTS profile_picture_size BIGINT,
+  ADD COLUMN IF NOT EXISTS profile_cover_stored_name TEXT UNIQUE,
+  ADD COLUMN IF NOT EXISTS profile_cover_mime_type TEXT,
+  ADD COLUMN IF NOT EXISTS profile_cover_size BIGINT;
 ALTER TABLE groups
   ADD COLUMN IF NOT EXISTS description TEXT,
   ADD COLUMN IF NOT EXISTS cover_image_stored_name TEXT UNIQUE,

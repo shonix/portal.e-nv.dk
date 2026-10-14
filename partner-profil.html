@@ -51,10 +51,20 @@
 
     .cover {
       height: 150px;
+      overflow: hidden;
       background: linear-gradient(135deg, #263764, #8ab9a2);
     }
 
+    .cover img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
     .profile-main {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
       margin-top: -56px;
       padding: 0 24px 24px;
       text-align: center;
@@ -64,7 +74,7 @@
       display: flex;
       width: 112px;
       height: 112px;
-      margin: 0 0 0 0;
+      margin: 0 auto;
       align-items: center;
       justify-content: center;
       border: 6px solid #fff;
@@ -92,6 +102,8 @@
     .biography {
       color: var(--muted);
     }
+
+    .profile-main p { margin: 0; }
 
     .profile-panel {
       margin-top: 18px;
@@ -144,7 +156,7 @@
     <a class="back-link" href="partnere.html">&larr; Tilbage til partnere</a>
 
     <section class="profile-hero">
-      <div class="cover"></div>
+      <div class="cover" id="profile-cover"></div>
       <div class="profile-main">
         <div class="avatar" id="avatar" aria-hidden="true">?</div>
         <h1 id="name">Henter partnerprofil...</h1>
@@ -194,6 +206,12 @@
       var avatar = document.getElementById("avatar");
       if (partner.profileImageUrl) avatar.innerHTML = '<img src="' + PortalData.escape(partner.profileImageUrl) + '" alt="">';
       else avatar.textContent = partner.name.charAt(0);
+      if (partner.profileCoverImageUrl) {
+        var coverImage = document.createElement("img");
+        coverImage.src = partner.profileCoverImageUrl;
+        coverImage.alt = "";
+        document.getElementById("profile-cover").appendChild(coverImage);
+      }
       document.getElementById("name").textContent = partner.name;
       document.getElementById("company-heading").textContent = partner.company || "";
       document.getElementById("biography").textContent = partner.biography || "";

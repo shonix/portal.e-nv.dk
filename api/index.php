@@ -121,6 +121,11 @@ function profilePictureDirectory(array $config): string
     return (string) ($config['profile_picture_dir'] ?? (dirname(__DIR__, 2) . '/portal-private/profile-pictures'));
 }
 
+function profileCoverDirectory(array $config): string
+{
+    return (string) ($config['profile_cover_dir'] ?? (dirname(__DIR__, 2) . '/portal-private/profile-covers'));
+}
+
 function groupPictureDirectory(array $config): string
 {
     return (string) ($config['group_picture_dir'] ?? (dirname(__DIR__, 2) . '/portal-private/group-pictures'));
@@ -138,11 +143,20 @@ function profilePictureUrl(array $partner): ?string
         . '&v=' . urlencode((string) $partner['profilePictureStoredName']);
 }
 
+function profileCoverUrl(array $partner): ?string
+{
+    if (empty($partner['profileCoverStoredName']) || empty($partner['id'])) return null;
+    return 'api/index.php?action=profile-cover&partnerId=' . urlencode((string) $partner['id'])
+        . '&v=' . urlencode((string) $partner['profileCoverStoredName']);
+}
+
 function attachProfilePictureUrl(?array &$partner): void
 {
     if (!$partner) return;
     $partner['profileImageUrl'] = profilePictureUrl($partner);
+    $partner['profileCoverImageUrl'] = profileCoverUrl($partner);
     unset($partner['profilePictureStoredName']);
+    unset($partner['profileCoverStoredName']);
 }
 
 function attachProfilePictureUrls(array &$partners): void
@@ -573,7 +587,8 @@ if ($method === 'POST' && $action === 'delete-my-account') {
 
     $accountStatement = $pdo->prepare(
         'SELECT u.id, u.email, u.password_hash, u.role,
-                p.profile_picture_stored_name AS "profilePictureStoredName"
+                p.profile_picture_stored_name AS "profilePictureStoredName",
+                p.profile_cover_stored_name AS "profileCoverStoredName"
          FROM users u
          LEFT JOIN partners p ON p.user_id = u.id
          WHERE u.id = :id'
@@ -591,17 +606,31 @@ if ($method === 'POST' && $action === 'delete-my-account') {
         }
     }
 
-    $picturePath = null;
-    $pendingPicturePath = null;
-    $storedName = trim((string) ($account['profilePictureStoredName'] ?? ''));
-    if ($storedName !== '') {
-        $picturePath = profilePictureDirectory($config) . DIRECTORY_SEPARATOR . basename($storedName);
-        if (is_file($picturePath)) {
-            $pendingPicturePath = $picturePath . '.deleting-' . bin2hex(random_bytes(8));
-            if (!rename($picturePath, $pendingPicturePath)) {
-                respond(['error' => 'Profilbilledet kunne ikke klargøres til sletning.'], 500);
+    $pendingPictures = [];
+    $pictures = [
+        [
+            'name' => trim((string) ($account['profilePictureStoredName'] ?? '')),
+            'directory' => profilePictureDirectory($config),
+            'label' => 'Profilbilledet',
+        ],
+        [
+            'name' => trim((string) ($account['profileCoverStoredName'] ?? '')),
+            'directory' => profileCoverDirectory($config),
+            'label' => 'Coverbilledet',
+        ],
+    ];
+    foreach ($pictures as $picture) {
+        if ($picture['name'] === '') continue;
+        $path = $picture['directory'] . DIRECTORY_SEPARATOR . basename($picture['name']);
+        if (!is_file($path)) continue;
+        $pendingPath = $path . '.deleting-' . bin2hex(random_bytes(8));
+        if (!rename($path, $pendingPath)) {
+            foreach ($pendingPictures as $pendingPicture) {
+                rename($pendingPicture['pending'], $pendingPicture['original']);
             }
+            respond(['error' => $picture['label'] . ' kunne ikke klargøres til sletning.'], 500);
         }
+        $pendingPictures[] = ['original' => $path, 'pending' => $pendingPath];
     }
 
     $pdo->beginTransaction();
@@ -628,14 +657,18 @@ if ($method === 'POST' && $action === 'delete-my-account') {
         $pdo->commit();
     } catch (Throwable $error) {
         if ($pdo->inTransaction()) $pdo->rollBack();
-        if ($pendingPicturePath && $picturePath && is_file($pendingPicturePath)) {
-            rename($pendingPicturePath, $picturePath);
+        foreach ($pendingPictures as $pendingPicture) {
+            if (is_file($pendingPicture['pending'])) {
+                rename($pendingPicture['pending'], $pendingPicture['original']);
+            }
         }
         throw $error;
     }
 
-    if ($pendingPicturePath && is_file($pendingPicturePath) && !unlink($pendingPicturePath)) {
-        error_log('[account deletion] Unable to remove profile picture: ' . $pendingPicturePath);
+    foreach ($pendingPictures as $pendingPicture) {
+        if (is_file($pendingPicture['pending']) && !unlink($pendingPicture['pending'])) {
+            error_log('[account deletion] Unable to remove profile image: ' . $pendingPicture['pending']);
+        }
     }
 
     $cookieParameters = session_get_cookie_params();
@@ -688,7 +721,8 @@ if ($method === 'POST' && $action === 'profile-picture') {
         respond(['error' => 'Filen ligner ikke et gyldigt billede.'], 422);
     }
     $partnerStatement = $pdo->prepare(
-        'SELECT id::text, profile_picture_stored_name AS "profilePictureStoredName"
+        'SELECT id::text, profile_picture_stored_name AS "profilePictureStoredName",
+                profile_cover_stored_name AS "profileCoverStoredName"
          FROM partners WHERE user_id = :user_id'
     );
     $partnerStatement->execute(['user_id' => $userId]);
@@ -751,6 +785,128 @@ if ($method === 'GET' && $action === 'profile-picture') {
     header('Content-Type: ' . $picture['profile_picture_mime_type']);
     header('Content-Length: ' . (string) $picture['profile_picture_size']);
     header('Cache-Control: private, max-age=86400');
+    header('X-Content-Type-Options: nosniff');
+    session_write_close();
+    readfile($path);
+    exit;
+}
+
+if ($method === 'POST' && $action === 'profile-cover') {
+    requireLogin();
+    $file = $_FILES['file'] ?? null;
+    $uploadError = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
+    if (in_array($uploadError, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
+        respond(['error' => 'Coverbilledet er større end serveren tillader.'], 422);
+    }
+    if (!$file || $uploadError !== UPLOAD_ERR_OK) {
+        respond(['error' => 'Vælg et coverbillede.'], 422);
+    }
+    $maxSize = (int) ($config['profile_cover_max_bytes'] ?? 5 * 1024 * 1024);
+    if ((int) $file['size'] <= 0 || (int) $file['size'] > $maxSize) {
+        respond(['error' => 'Coverbilledet er tomt eller større end 5 MB.'], 422);
+    }
+    $extension = strtolower(pathinfo((string) $file['name'], PATHINFO_EXTENSION));
+    $allowed = [
+        'jpg' => ['image/jpeg'], 'jpeg' => ['image/jpeg'],
+        'png' => ['image/png'], 'webp' => ['image/webp'],
+    ];
+    if (!isset($allowed[$extension])) respond(['error' => 'Brug JPG, PNG eller WebP.'], 422);
+    $mime = (new finfo(FILEINFO_MIME_TYPE))->file((string) $file['tmp_name']) ?: 'application/octet-stream';
+    if (!in_array($mime, $allowed[$extension], true) || !getimagesize((string) $file['tmp_name'])) {
+        respond(['error' => 'Filen ligner ikke et gyldigt billede.'], 422);
+    }
+    $partnerStatement = $pdo->prepare(
+        'SELECT id::text, profile_picture_stored_name AS "profilePictureStoredName",
+                profile_cover_stored_name AS "profileCoverStoredName"
+         FROM partners WHERE user_id = :user_id'
+    );
+    $partnerStatement->execute(['user_id' => $userId]);
+    $partner = $partnerStatement->fetch();
+    if (!$partner) respond(['error' => 'Gem profilen, før du uploader et coverbillede.'], 422);
+    $directory = profileCoverDirectory($config);
+    if (!is_dir($directory) && !mkdir($directory, 0750, true) && !is_dir($directory)) {
+        respond(['error' => 'Uploadmappen kunne ikke oprettes.'], 500);
+    }
+    $directory = realpath($directory) ?: '';
+    if ($directory === '') respond(['error' => 'Uploadmappen kunne ikke valideres.'], 500);
+    $storedName = bin2hex(random_bytes(20)) . '.' . ($extension === 'jpeg' ? 'jpg' : $extension);
+    $destination = $directory . DIRECTORY_SEPARATOR . $storedName;
+    if (!move_uploaded_file((string) $file['tmp_name'], $destination)) {
+        respond(['error' => 'Coverbilledet kunne ikke gemmes.'], 500);
+    }
+    $oldName = (string) ($partner['profileCoverStoredName'] ?? '');
+    try {
+        $pdo->prepare(
+            'UPDATE partners
+             SET profile_cover_stored_name = :stored_name,
+                 profile_cover_mime_type = :mime_type,
+                 profile_cover_size = :file_size
+             WHERE id = :id'
+        )->execute([
+            'stored_name' => $storedName,
+            'mime_type' => $mime,
+            'file_size' => (int) $file['size'],
+            'id' => (int) $partner['id'],
+        ]);
+    } catch (Throwable $exception) {
+        @unlink($destination);
+        throw $exception;
+    }
+    if ($oldName !== '') {
+        $oldPath = $directory . DIRECTORY_SEPARATOR . basename($oldName);
+        if (is_file($oldPath)) @unlink($oldPath);
+    }
+    $partner['profileCoverStoredName'] = $storedName;
+    attachProfilePictureUrl($partner);
+    respond(['partner' => $partner]);
+}
+
+if ($method === 'POST' && $action === 'delete-profile-cover') {
+    requireLogin();
+    $existing = $pdo->prepare(
+        'SELECT id, profile_picture_stored_name AS "profilePictureStoredName",
+                profile_cover_stored_name AS "profileCoverStoredName"
+         FROM partners WHERE user_id = :user_id'
+    );
+    $existing->execute(['user_id' => $userId]);
+    $partner = $existing->fetch();
+    if (!$partner) respond(['error' => 'Profilen findes ikke.'], 404);
+    $storedName = (string) ($partner['profileCoverStoredName'] ?? '');
+    $pdo->prepare(
+        'UPDATE partners
+         SET profile_cover_stored_name = NULL,
+             profile_cover_mime_type = NULL,
+             profile_cover_size = NULL
+         WHERE id = :id'
+    )->execute(['id' => (int) $partner['id']]);
+    if ($storedName !== '') {
+        $path = profileCoverDirectory($config) . DIRECTORY_SEPARATOR . basename($storedName);
+        if (is_file($path)) @unlink($path);
+    }
+    $partner['profileCoverStoredName'] = null;
+    attachProfilePictureUrl($partner);
+    respond(['partner' => $partner]);
+}
+
+if ($method === 'GET' && $action === 'profile-cover') {
+    requireLogin();
+    $partnerId = (int) ($_GET['partnerId'] ?? 0);
+    if ($partnerId <= 0) respond(['error' => 'Partner is required.'], 422);
+    $statement = $pdo->prepare(
+        'SELECT profile_cover_stored_name, profile_cover_mime_type, profile_cover_size
+         FROM partners
+         WHERE id = :partner_id AND profile_cover_stored_name IS NOT NULL'
+    );
+    $statement->execute(['partner_id' => $partnerId]);
+    $picture = $statement->fetch();
+    if (!$picture) respond(['error' => 'Coverbilledet findes ikke.'], 404);
+    $path = profileCoverDirectory($config) . DIRECTORY_SEPARATOR . basename((string) $picture['profile_cover_stored_name']);
+    if (!is_file($path)) respond(['error' => 'Coverbilledet mangler på serveren.'], 404);
+    header_remove('Content-Type');
+    header('Content-Type: ' . $picture['profile_cover_mime_type']);
+    header('Content-Length: ' . (string) $picture['profile_cover_size']);
+    header('Cache-Control: private, max-age=86400');
+    header('X-Content-Type-Options: nosniff');
     session_write_close();
     readfile($path);
     exit;
@@ -1117,6 +1273,7 @@ if ($method === 'GET' && $action === 'partners') {
         'SELECT p.id::text, p.slug, p.name, p.linkedin_url AS "linkedin", p.industry, p.company,
                  p.company_url AS "companyUrl", p.email, p.phone, p.biography,
                  p.profile_picture_stored_name AS "profilePictureStoredName",
+                 p.profile_cover_stored_name AS "profileCoverStoredName",
                  COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels
          FROM partners p
          LEFT JOIN partner_profile_labels ppl ON ppl.partner_id = p.id
@@ -1143,6 +1300,7 @@ if ($method === 'GET' && $action === 'group-partners') {
         'SELECT p.id::text, p.slug, p.name, p.linkedin_url AS "linkedin",
                  p.industry, p.company, p.company_url AS "companyUrl", p.email, p.phone, p.biography,
                  p.profile_picture_stored_name AS "profilePictureStoredName",
+                 p.profile_cover_stored_name AS "profileCoverStoredName",
                  COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels
          FROM partners p
          JOIN users profile_owner ON profile_owner.id = p.user_id
@@ -1254,6 +1412,7 @@ if ($method === 'GET' && $action === 'meeting-partners') {
             'SELECT p.id::text, p.slug, p.name, p.company, p.email,
                     p.linkedin_url AS "linkedin", p.company_url AS "companyUrl",
                     p.profile_picture_stored_name AS "profilePictureStoredName",
+                    p.profile_cover_stored_name AS "profileCoverStoredName",
                     COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels'
             . $listSql .
             ' GROUP BY p.id
@@ -1328,6 +1487,7 @@ if ($method === 'GET' && $action === 'meeting-partners') {
         'SELECT p.id::text, p.slug, p.name, p.company, p.email,
                 p.linkedin_url AS "linkedin", p.company_url AS "companyUrl",
                 p.profile_picture_stored_name AS "profilePictureStoredName",
+                p.profile_cover_stored_name AS "profileCoverStoredName",
                 COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels
          FROM partners p
          JOIN users profile_owner ON profile_owner.id = p.user_id
@@ -1633,6 +1793,7 @@ if ($method === 'GET' && $action === 'partner-detail') {
         'SELECT p.id::text, p.slug, p.name, p.linkedin_url AS "linkedin",
                 p.industry, p.company, p.company_url AS "companyUrl", p.email, p.phone, p.biography,
                 p.profile_picture_stored_name AS "profilePictureStoredName",
+                p.profile_cover_stored_name AS "profileCoverStoredName",
                 COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels
          FROM partners p
          LEFT JOIN partner_profile_labels ppl ON ppl.partner_id = p.id
@@ -1663,6 +1824,7 @@ if ($method === 'GET' && $action === 'my-profile') {
         'SELECT p.id::text, p.slug, p.name, p.linkedin_url AS "linkedin", p.industry, p.company,
                 p.company_url AS "companyUrl", p.email, p.phone, p.biography,
                 p.profile_picture_stored_name AS "profilePictureStoredName",
+                p.profile_cover_stored_name AS "profileCoverStoredName",
                 COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels,
                 COALESCE(json_agg(DISTINCT l.id::text) FILTER (WHERE l.id IS NOT NULL), \'[]\'::json) AS "labelIds"
          FROM partners p
@@ -1705,7 +1867,9 @@ if ($method === 'POST' && $action === 'my-profile') {
          ON CONFLICT (user_id) DO UPDATE SET slug = EXCLUDED.slug, name = EXCLUDED.name, linkedin_url = EXCLUDED.linkedin_url,
            industry = EXCLUDED.industry, company = EXCLUDED.company, company_url = EXCLUDED.company_url,
            email = EXCLUDED.email, phone = EXCLUDED.phone, biography = EXCLUDED.biography
-         RETURNING id::text, slug'
+         RETURNING id::text, slug,
+                   profile_picture_stored_name AS "profilePictureStoredName",
+                   profile_cover_stored_name AS "profileCoverStoredName"'
     );
     $statement->execute([
         'user_id' => $userId, 'slug' => slugify((string) $body['name']) . '-' . $userId,
@@ -1732,6 +1896,7 @@ if ($method === 'POST' && $action === 'my-profile') {
         $preferenceStatement->bindValue(':id', $userId, PDO::PARAM_INT);
         $preferenceStatement->execute();
     }
+    attachProfilePictureUrl($partner);
     respond(['partner' => $partner]);
 }
 
@@ -1747,6 +1912,7 @@ if ($method === 'GET' && $action === 'admin-profile') {
         'SELECT p.id::text, p.slug, p.name, p.linkedin_url AS "linkedin", p.industry, p.company,
                 p.company_url AS "companyUrl", p.email, p.phone, p.biography,
                 p.profile_picture_stored_name AS "profilePictureStoredName",
+                p.profile_cover_stored_name AS "profileCoverStoredName",
                 COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels,
                 COALESCE(json_agg(DISTINCT l.id::text) FILTER (WHERE l.id IS NOT NULL), \'[]\'::json) AS "labelIds"
          FROM partners p
@@ -1788,7 +1954,9 @@ if ($method === 'POST' && $action === 'admin-profile') {
          ON CONFLICT (user_id) DO UPDATE SET slug = EXCLUDED.slug, name = EXCLUDED.name, linkedin_url = EXCLUDED.linkedin_url,
            industry = EXCLUDED.industry, company = EXCLUDED.company, company_url = EXCLUDED.company_url,
            email = EXCLUDED.email, phone = EXCLUDED.phone, biography = EXCLUDED.biography
-         RETURNING id::text, slug, profile_picture_stored_name AS "profilePictureStoredName"'
+         RETURNING id::text, slug,
+                   profile_picture_stored_name AS "profilePictureStoredName",
+                   profile_cover_stored_name AS "profileCoverStoredName"'
     );
     $statement->execute([
         'user_id' => $targetUserId,
@@ -2156,8 +2324,24 @@ if ($method === 'POST' && $action === 'admin-delete-user') {
     if ($targetUserId === $userId) {
         respond(['error' => 'Du kan ikke slette din egen bruger.'], 422);
     }
+    $pictures = $pdo->prepare(
+        'SELECT p.profile_picture_stored_name AS "profilePictureStoredName",
+                p.profile_cover_stored_name AS "profileCoverStoredName"
+         FROM partners p WHERE p.user_id = :id'
+    );
+    $pictures->execute(['id' => $targetUserId]);
+    $profilePictures = $pictures->fetch() ?: [];
     $statement = $pdo->prepare('DELETE FROM users WHERE id = :id');
     $statement->execute(['id' => $targetUserId]);
+    $storedFiles = [
+        [profilePictureDirectory($config), (string) ($profilePictures['profilePictureStoredName'] ?? '')],
+        [profileCoverDirectory($config), (string) ($profilePictures['profileCoverStoredName'] ?? '')],
+    ];
+    foreach ($storedFiles as [$directory, $storedName]) {
+        if ($storedName === '') continue;
+        $path = $directory . DIRECTORY_SEPARATOR . basename($storedName);
+        if (is_file($path)) @unlink($path);
+    }
     respond(['ok' => true]);
 }
 
