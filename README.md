@@ -76,6 +76,8 @@ files and other runtime data must not be committed.
   `invited` and finally `active` when the person accepts the invitation. The
   existing profile and memberships are retained during activation; non-active
   accounts are excluded from login, password resets and automatic member mail.
+- Administrators can upload, replace and remove profile pictures for both
+  active users and profiles that have not yet been claimed.
 
 ## External address service
 

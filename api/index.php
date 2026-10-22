@@ -702,8 +702,15 @@ if ($method === 'GET' && $action === 'session') {
     respond(['loggedIn' => isset($_SESSION['user_id']), 'id' => isset($_SESSION['user_id']) ? (string) $_SESSION['user_id'] : null, 'role' => $_SESSION['role'] ?? null, 'email' => $email]);
 }
 
-if ($method === 'POST' && $action === 'profile-picture') {
-    requireLogin();
+if ($method === 'POST' && in_array($action, ['profile-picture', 'admin-profile-picture'], true)) {
+    $targetUserId = $userId;
+    if ($action === 'admin-profile-picture') {
+        requireAdmin();
+        $targetUserId = (int) ($_POST['userId'] ?? 0);
+        if ($targetUserId <= 0) respond(['error' => 'Vælg en bruger.'], 422);
+    } else {
+        requireLogin();
+    }
     $file = $_FILES['file'] ?? null;
     if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
         respond(['error' => 'Vælg et profilbillede.'], 422);
@@ -725,7 +732,7 @@ if ($method === 'POST' && $action === 'profile-picture') {
                 profile_cover_stored_name AS "profileCoverStoredName"
          FROM partners WHERE user_id = :user_id'
     );
-    $partnerStatement->execute(['user_id' => $userId]);
+    $partnerStatement->execute(['user_id' => $targetUserId]);
     $partner = $partnerStatement->fetch();
     if (!$partner) respond(['error' => 'Gem profilen, før du uploader et profilbillede.'], 422);
     $directory = profilePictureDirectory($config);
@@ -762,6 +769,36 @@ if ($method === 'POST' && $action === 'profile-picture') {
         if (is_file($oldPath)) @unlink($oldPath);
     }
     $partner['profilePictureStoredName'] = $storedName;
+    attachProfilePictureUrl($partner);
+    respond(['partner' => $partner]);
+}
+
+if ($method === 'POST' && $action === 'admin-delete-profile-picture') {
+    requireAdmin();
+    $body = requestBody();
+    required($body, ['userId']);
+    $targetUserId = (int) $body['userId'];
+    $existing = $pdo->prepare(
+        'SELECT id, profile_picture_stored_name AS "profilePictureStoredName",
+                profile_cover_stored_name AS "profileCoverStoredName"
+         FROM partners WHERE user_id = :user_id'
+    );
+    $existing->execute(['user_id' => $targetUserId]);
+    $partner = $existing->fetch();
+    if (!$partner) respond(['error' => 'Profilen findes ikke.'], 404);
+    $storedName = (string) ($partner['profilePictureStoredName'] ?? '');
+    $pdo->prepare(
+        'UPDATE partners
+         SET profile_picture_stored_name = NULL,
+             profile_picture_mime_type = NULL,
+             profile_picture_size = NULL
+         WHERE id = :id'
+    )->execute(['id' => (int) $partner['id']]);
+    if ($storedName !== '') {
+        $path = profilePictureDirectory($config) . DIRECTORY_SEPARATOR . basename($storedName);
+        if (is_file($path)) @unlink($path);
+    }
+    $partner['profilePictureStoredName'] = null;
     attachProfilePictureUrl($partner);
     respond(['partner' => $partner]);
 }

@@ -16,6 +16,7 @@
     input[readonly]{background:#f1f4f6;color:#536174}textarea{min-height:110px}
     button{margin-top:16px;padding:10px 14px;border:0;border-radius:5px;background:var(--green);color:#fff;cursor:pointer}
     .notice{min-height:20px;color:var(--green)}.required{color:var(--danger)}
+    .picture-row{display:flex;gap:16px;align-items:center;margin:4px 0 18px}.profile-preview{display:flex;width:86px;height:86px;flex:0 0 86px;align-items:center;justify-content:center;overflow:hidden;border-radius:50%;background:var(--green);color:#fff;font-size:30px;font-weight:bold}.profile-preview img{width:100%;height:100%;object-fit:cover}.picture-controls{flex:1}.picture-controls label{margin-top:0}.picture-actions{display:flex;flex-wrap:wrap;gap:10px}.picture-actions button{margin-top:10px}.secondary{background:#e8edf2;color:var(--navy)}
     .picker{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;margin-top:5px}.picker select{width:100%;padding:10px;border:1px solid var(--line);border-radius:5px;background:#fff}.selected-tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.tag{display:inline-flex;gap:7px;align-items:center;padding:6px 9px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--navy);font-size:13px}.tag button{margin:0;padding:0;border:0;background:transparent;color:var(--danger)}
   </style>
 </head>
@@ -26,6 +27,13 @@
   <p class="intro" id="intro">Henter profil...</p>
   <p class="hint"><span class="required">*</span> Påkrævet felt</p>
   <form id="form" style="display:none">
+    <div class="picture-row">
+      <div class="profile-preview" id="profile-preview">?</div>
+      <div class="picture-controls">
+        <label>Profilbillede<input id="profile-picture-input" name="profilePicture" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"><span class="hint">JPG, PNG eller WebP. Billedet beskæres automatisk til en firkant.</span></label>
+        <div class="picture-actions"><button class="secondary" id="remove-profile-picture" type="button" hidden>Fjern profilbillede</button></div>
+      </div>
+    </div>
     <label>Navn <span class="required">*</span><input name="name" required></label>
     <label>LinkedIn<input name="linkedin" type="url"></label>
     <label>Virksomhed<input name="company"></label>
@@ -42,11 +50,14 @@
     <p><a id="view-profile" style="display:none">Se profil</a></p>
   </form>
 </main>
-<script src="portal-data.js?v=20260811-01"></script>
+<script src="portal-data.js?v=20261022-01"></script>
 <script src="portal-header.js?v=20260811-04"></script>
 <script>
 var userId=new URLSearchParams(location.search).get("userId"),availableLabels=[],selectedLabelIds=[];
+var pendingProfilePicture=null,removeProfilePictureRequested=false,profilePreviewUrl=null;
 function showLink(partner){if(partner&&partner.id){var link=document.getElementById("view-profile");link.href="partner-profil.html?id="+encodeURIComponent(partner.id);link.style.display="inline"}}
+function renderProfilePicture(partner){var preview=document.getElementById("profile-preview");preview.innerHTML="";if(partner&&partner.profileImageUrl){var image=document.createElement("img");image.src=partner.profileImageUrl;image.alt="";preview.appendChild(image);document.getElementById("remove-profile-picture").hidden=false}else{preview.textContent=(form.elements.name.value||"?").charAt(0).toUpperCase();document.getElementById("remove-profile-picture").hidden=true}}
+function prepareProfilePicture(file){return new Promise(function(resolve,reject){var sourceUrl=URL.createObjectURL(file),image=new Image();image.onload=function(){var size=Math.min(image.width,image.height),sourceX=(image.width-size)/2,sourceY=(image.height-size)/2,canvas=document.createElement("canvas");canvas.width=512;canvas.height=512;canvas.getContext("2d").drawImage(image,sourceX,sourceY,size,size,0,0,512,512);URL.revokeObjectURL(sourceUrl);canvas.toBlob(function(blob){if(!blob){reject(new Error("Profilbilledet kunne ikke klargøres."));return}resolve(new File([blob],"profile-picture.jpg",{type:"image/jpeg"}))},"image/jpeg",.9)};image.onerror=function(){URL.revokeObjectURL(sourceUrl);reject(new Error("Profilbilledet kunne ikke læses."))};image.src=sourceUrl})}
 function labelName(id){var label=availableLabels.find(function(item){return String(item.id)===String(id)});return label?label.name:"Branche "+id}
 function renderLabels(){var selected=selectedLabelIds.map(String),options=availableLabels.filter(function(label){return !selected.includes(String(label.id))});document.getElementById("label-picker").innerHTML=options.length?options.map(function(label){return'<option value="'+label.id+'">'+PortalData.escape(label.name)+'</option>'}).join(""):'<option value="">Alle brancher er tilføjet</option>';document.getElementById("label-picker").disabled=!options.length;document.getElementById("add-label").disabled=!options.length;labels.innerHTML=selected.length?selected.map(function(id){return'<span class="tag">'+PortalData.escape(labelName(id))+' <button type="button" data-remove-label="'+id+'">Fjern</button></span>'}).join(""):'<span class="hint">Ingen brancher valgt.</span>';labels.querySelectorAll("[data-remove-label]").forEach(function(button){button.onclick=function(){var id=String(button.dataset.removeLabel);selectedLabelIds.splice(selectedLabelIds.indexOf(id),1);renderLabels()}})}
 PortalData.requireSession("admin").then(async function(){
@@ -58,9 +69,12 @@ PortalData.requireSession("admin").then(async function(){
   form.elements.email.value=data.user.email;
   renderLabels();
   if(partner){Object.keys(partner).forEach(function(key){if(form.elements[key])form.elements[key].value=partner[key]||""});form.elements.email.value=data.user.email||partner.email||"";showLink(partner)}
+  renderProfilePicture(partner);
 }).catch(function(error){intro.textContent=error.message});
 document.getElementById("add-label").onclick=function(){var select=document.getElementById("label-picker");if(select.value&&!selectedLabelIds.includes(String(select.value))){selectedLabelIds.push(String(select.value));renderLabels()}};
-form.onsubmit=async function(event){event.preventDefault();try{var data=Object.fromEntries(new FormData(form));data.userId=userId;data.labelIds=selectedLabelIds.slice();var result=await PortalData.saveAdminProfile(data);notice.textContent="Profilen er gemt.";showLink(result.partner)}catch(error){notice.textContent=error.message}};
+document.getElementById("profile-picture-input").onchange=async function(){var file=this.files[0];if(!file)return;if(!/^image\/(jpeg|png|webp)$/.test(file.type)){notice.textContent="Brug JPG, PNG eller WebP.";this.value="";return}this.disabled=true;try{pendingProfilePicture=await prepareProfilePicture(file);removeProfilePictureRequested=false;if(profilePreviewUrl)URL.revokeObjectURL(profilePreviewUrl);profilePreviewUrl=URL.createObjectURL(pendingProfilePicture);renderProfilePicture({profileImageUrl:profilePreviewUrl})}catch(error){notice.textContent=error.message;this.value=""}finally{this.disabled=false}};
+document.getElementById("remove-profile-picture").onclick=function(){pendingProfilePicture=null;removeProfilePictureRequested=true;form.elements.profilePicture.value="";if(profilePreviewUrl)URL.revokeObjectURL(profilePreviewUrl);profilePreviewUrl=null;renderProfilePicture(null)};
+form.onsubmit=async function(event){event.preventDefault();try{var data=Object.fromEntries(new FormData(form));delete data.profilePicture;data.userId=userId;data.labelIds=selectedLabelIds.slice();var result=await PortalData.saveAdminProfile(data);if(removeProfilePictureRequested){result=await PortalData.deleteAdminProfilePicture(userId);removeProfilePictureRequested=false}if(pendingProfilePicture){result=await PortalData.uploadAdminProfilePicture(userId,pendingProfilePicture);pendingProfilePicture=null;form.elements.profilePicture.value=""}if(profilePreviewUrl)URL.revokeObjectURL(profilePreviewUrl);profilePreviewUrl=null;notice.textContent="Profilen er gemt.";showLink(result.partner);renderProfilePicture(result.partner||data)}catch(error){notice.textContent=error.message}};
 </script>
 </body>
 </html>
