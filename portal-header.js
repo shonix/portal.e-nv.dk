@@ -8,6 +8,7 @@
   }
   var style = document.createElement("style");
   style.textContent = [
+    "body{display:flex;min-height:100vh;flex-direction:column}",
     ".site-header,.site-header *{box-sizing:border-box}",
     ".site-header{position:fixed;top:0;left:0;right:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:24px;min-height:77px;padding:14px 28px;border-bottom:1px solid #d6dde3;background:#fff;font-family:Arial,Helvetica,sans-serif}",
     ".site-brand{display:flex;align-items:center;gap:10px;color:#15243a;text-decoration:none;font-weight:bold}",
@@ -15,6 +16,12 @@
     ".site-nav{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:15px 22px}",
     ".site-nav a{color:#15243a;text-decoration:none;font-size:15px}",
     ".site-nav a:hover{text-decoration:underline;text-decoration-color:#163674;text-underline-offset:5px}",
+    ".site-footer,.site-footer *{box-sizing:border-box}",
+    ".site-footer{margin-top:auto;padding:24px 20px;border-top:1px solid #d6dde3;background:#fff;color:#5d6b80;font-family:Arial,Helvetica,sans-serif}",
+    ".site-footer-inner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 24px;max-width:1180px;margin:0 auto}",
+    ".site-footer p{margin:0;font-size:13px;line-height:1.5}",
+    ".site-footer-nav{display:flex;flex-wrap:wrap;gap:10px 18px}",
+    ".site-footer a{color:#163674;font-size:13px;text-underline-offset:3px}",
     ".onboarding-notice{position:relative;left:-8px;box-sizing:border-box;width:100vw;border-bottom:1px solid #b9cbe0;background:#edf4fb;color:#183a63;font-family:Arial,Helvetica,sans-serif}",
     ".onboarding-notice-inner{display:grid;grid-template-columns:24px minmax(0,1fr);gap:12px;max-width:1180px;margin:0 auto;padding:14px 24px}",
     ".onboarding-notice-icon{display:flex;width:22px;height:22px;align-items:center;justify-content:center;margin-top:1px;border:2px solid currentColor;border-radius:50%;font-size:14px;font-style:normal;font-weight:bold;line-height:1}",
@@ -33,6 +40,10 @@
   header.className = "site-header";
   header.innerHTML = '<a class="site-brand" href="index.html"><span class="site-logo">EP</span><span>Partnerportalen</span></a><nav class="site-nav"><a href="index.html">Forside</a><a href="materialer.html" data-auth="member" style="display:none">Materiale</a><a href="login.html" data-auth="guest">Log ind</a><a href="min-profil.html" data-auth="member" style="display:none">Min profil</a><a href="admin.html" data-auth="admin" style="display:none">Administration</a><a href="#" data-auth="logout" style="display:none">Log ud</a></nav>';
   document.body.insertBefore(header, document.body.firstChild);
+  var footer = document.createElement("footer");
+  footer.className = "site-footer";
+  footer.innerHTML = '<div class="site-footer-inner"><p>&copy; '+new Date().getFullYear()+' Ejendomspartner Danmark ApS &middot; CVR 38502476</p><nav class="site-footer-nav" aria-label="Juridisk information"><a href="privatlivspolitik.html">Privatlivspolitik</a><a href="cookiepolitik.html">Cookiepolitik</a><a href="samtykke.html">E-mails og kommunikation</a></nav></div>';
+  document.body.appendChild(footer);
   PortalData.session().then(function (session) {
     header.querySelectorAll('[data-auth="guest"]').forEach(function (link) { link.style.display = session.loggedIn ? "none" : "inline"; });
     header.querySelectorAll('[data-auth="member"],[data-auth="logout"]').forEach(function (link) { link.style.display = session.loggedIn ? "inline" : "none"; });

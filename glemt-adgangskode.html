@@ -30,6 +30,7 @@
   </section>
 </main>
 <script src="portal-data.js?v=20260917-01"></script>
+<script src="portal-header.js?v=20261022-01"></script>
 <script>
 var requestForm=document.getElementById("request-form"),intro=document.getElementById("intro"),result=document.getElementById("result");
 requestForm.onsubmit=async function(event){event.preventDefault();result.textContent="";result.className="";var button=requestForm.querySelector("button");button.disabled=true;button.textContent="Sender...";try{await PortalData.requestPasswordReset(requestForm.email.value);requestForm.hidden=true;intro.textContent="Tjek din indbakke";result.textContent="Hvis der findes en konto med e-mailadressen, har vi sendt et nulstillingslink. Linket gælder i 60 minutter. Tjek også mappen med uønsket post.";result.className="success"}catch(problem){result.textContent=problem.message;result.className="error";button.disabled=false;button.textContent="Send nulstillingslink"}};

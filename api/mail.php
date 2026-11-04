@@ -37,7 +37,17 @@ function portalMailPreferencesFooter(array $config): string
     return "\n\n---\n" .
         "Vil du ændre, hvordan du modtager e-mails fra Partnerportalen?\n" .
         "Du kan opdatere dine præferencer eller afmelde e-mails om nye opslag under Min profil:\n" .
-        $baseUrl . '/min-profil.html';
+        $baseUrl . '/min-profil.html' .
+        "\n\nLæs, hvordan vi behandler dine oplysninger:\n" .
+        $baseUrl . '/privatlivspolitik.html';
+}
+
+function portalMailPrivacyFooter(array $config): string
+{
+    $baseUrl = rtrim(trim((string) ($config['portal_base_url'] ?? 'https://portal.e-nv.dk')), '/');
+    return "\n\n---\n" .
+        "Læs, hvordan vi behandler dine oplysninger:\n" .
+        $baseUrl . '/privatlivspolitik.html';
 }
 
 function portalPrepareMailAttachments(array $attachments): array
@@ -118,8 +128,6 @@ function portalGraphAccessToken(array $settings): array
     $response = curl_exec($handle);
     $curlError = curl_error($handle);
     $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
-    curl_close($handle);
-
     if ($response === false || $curlError !== '') {
         return portalMailFailure('Microsoft 365 kunne ikke kontaktes.', 'Token request failed: ' . $curlError);
     }
@@ -195,8 +203,6 @@ function sendPortalResendMail(
     $response = curl_exec($handle);
     $curlError = curl_error($handle);
     $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
-    curl_close($handle);
-
     if ($response === false || $curlError !== '') {
         return portalMailFailure('Resend kunne ikke kontaktes.', 'Resend request failed: ' . $curlError);
     }
@@ -272,8 +278,6 @@ function sendPortalGraphMail(
     $response = curl_exec($handle);
     $curlError = curl_error($handle);
     $status = (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
-    curl_close($handle);
-
     if ($response === false || $curlError !== '') {
         return portalMailFailure('Microsoft 365 kunne ikke kontaktes.', 'Send request failed: ' . $curlError);
     }
@@ -301,7 +305,9 @@ function sendPortalMail(
         return portalMailFailure('E-mailens emne mangler.', 'Mail subject is empty.');
     }
     $body = rtrim($body);
-    if ($includePreferencesFooter) $body .= portalMailPreferencesFooter($config);
+    $body .= $includePreferencesFooter
+        ? portalMailPreferencesFooter($config)
+        : portalMailPrivacyFooter($config);
 
     $settings = portalMailSettings($config);
     $attachmentResult = portalPrepareMailAttachments($attachments);

@@ -78,6 +78,11 @@ files and other runtime data must not be committed.
   accounts are excluded from login, password resets and automatic member mail.
 - Administrators can upload, replace and remove profile pictures for both
   active users and profiles that have not yet been claimed.
+- Public Danish privacy, cookie and email-preference information is available from
+  the shared footer on every portal page. Registration links to the privacy
+  notice, and automated e-mails include the privacy-notice link. The current
+  portal uses only the technically necessary `env_portal_session` cookie and no
+  analytics or advertising cookies.
 
 ## External address service
 

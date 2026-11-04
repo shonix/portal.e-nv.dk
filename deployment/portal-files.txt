@@ -10,6 +10,7 @@ api/bootstrap.php
 api/features.php
 api/index.php
 api/mail.php
+cookiepolitik.html
 admin-banner.html
 admin-branchelabels.html
 admin-bruger.html
@@ -32,6 +33,7 @@ glemt-adgangskode.html
 gaesteinvitation.html
 gruppe.html
 index.html
+legal.css
 login.html
 materialer.html
 min-profil.html
@@ -44,5 +46,7 @@ partnere.html
 portal-data.js
 portal-header.css
 portal-header.js
+privatlivspolitik.html
 registrer.html
+samtykke.html
 xlsx.full.min.js

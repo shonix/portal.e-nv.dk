@@ -1,0 +1,25 @@
+:root{--legal-navy:#15243a;--legal-blue:#163674;--legal-line:#d6dde3;--legal-muted:#5d6b80;--legal-page:#f5f7f9;--legal-surface:#fff;--legal-soft:#edf4fb}
+*{box-sizing:border-box}
+body{margin:0;background:var(--legal-page);color:var(--legal-navy);font-family:Arial,Helvetica,sans-serif}
+.legal-page{max-width:900px;margin:0 auto;padding:48px 20px 72px}
+.legal-hero{margin-bottom:20px;padding:30px;border:1px solid var(--legal-line);border-radius:10px;background:var(--legal-surface)}
+.legal-kicker{margin:0 0 8px;color:var(--legal-blue);font-size:13px;font-weight:bold;letter-spacing:.06em;text-transform:uppercase}
+.legal-hero h1{margin:0 0 12px;font-size:38px;line-height:1.12}
+.legal-intro{max-width:720px;margin:0;color:var(--legal-muted);font-size:17px;line-height:1.65}
+.legal-updated{margin:18px 0 0;color:var(--legal-muted);font-size:13px}
+.legal-card{margin-top:16px;padding:26px 30px;border:1px solid var(--legal-line);border-radius:10px;background:var(--legal-surface)}
+.legal-card h2{margin:0 0 12px;font-size:23px;line-height:1.25}
+.legal-card h3{margin:24px 0 8px;font-size:17px;line-height:1.35}
+.legal-card p,.legal-card li{font-size:15px;line-height:1.65}
+.legal-card p{margin:10px 0}
+.legal-card ul{margin:10px 0;padding-left:22px}
+.legal-card li+li{margin-top:6px}
+.legal-card a{color:var(--legal-blue);text-underline-offset:3px}
+.legal-note{padding:16px 18px;border-left:4px solid var(--legal-blue);border-radius:4px;background:var(--legal-soft)}
+.legal-table-wrap{width:100%;overflow-x:auto}
+.legal-table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.5}
+.legal-table th,.legal-table td{padding:12px;border-bottom:1px solid var(--legal-line);text-align:left;vertical-align:top}
+.legal-table th{background:#f3f6f9;font-weight:bold}
+.legal-table code{font-size:13px}
+.preference-copy{padding:18px;border:1px solid #b9cbe0;border-radius:6px;background:var(--legal-soft);font-weight:bold;line-height:1.65}
+@media(max-width:700px){.legal-page{padding:28px 16px 56px}.legal-hero,.legal-card{padding:22px 18px}.legal-hero h1{font-size:30px}}
