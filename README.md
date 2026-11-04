@@ -43,6 +43,10 @@ files and other runtime data must not be committed.
 
 ## Current portal behaviour
 
+- The front page uses **Møder** and **Partnere** as its primary views. Logged-in
+  users can search partner profiles globally by name, company, industry, group
+  or profile keyword while still browsing the group cards.
+
 - Administrators can invite groups, individual portal users and external guests
   from `admin-moedeinvitationer.html`.
 - The invitation subject and message can be edited per send using the supported

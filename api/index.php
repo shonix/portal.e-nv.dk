@@ -1311,7 +1311,15 @@ if ($method === 'GET' && $action === 'partners') {
                  p.company_url AS "companyUrl", p.email, p.phone, p.biography,
                  p.profile_picture_stored_name AS "profilePictureStoredName",
                  p.profile_cover_stored_name AS "profileCoverStoredName",
-                 COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels
+                 COALESCE(string_agg(DISTINCT l.name, \', \' ORDER BY l.name), \'\') AS labels,
+                 COALESCE((
+                    SELECT string_agg(DISTINCT g.name, \', \' ORDER BY g.name)
+                    FROM users profile_owner
+                    JOIN group_members gm ON gm.user_id = profile_owner.id
+                    JOIN groups g ON g.id = gm.group_id
+                    WHERE profile_owner.id = p.user_id
+                       OR (p.user_id IS NULL AND LOWER(TRIM(profile_owner.email)) = LOWER(TRIM(p.email)))
+                 ), \'\') AS "groupNames"
          FROM partners p
          LEFT JOIN partner_profile_labels ppl ON ppl.partner_id = p.id
          LEFT JOIN partner_labels l ON l.id = ppl.label_id

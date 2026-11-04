@@ -230,6 +230,179 @@
     letter-spacing: .2px;
   }
 
+  .partners-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 540px);
+    gap: 28px;
+    align-items: end;
+    margin-bottom: 22px;
+  }
+
+  .partners-toolbar .portal-heading { margin-bottom: 5px; }
+
+  .partners-toolbar-copy {
+    margin: 0;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  .partner-search-shell { position: relative; display: block; }
+  .partner-search-shell[hidden] { display: none; }
+
+  .partner-search-shell input {
+    width: 100%;
+    min-height: 54px;
+    padding: 12px 52px 12px 17px;
+    border: 2px solid var(--navy);
+    border-radius: 11px;
+    background: #fff;
+    color: var(--navy);
+    box-shadow: 0 4px 12px rgba(21, 36, 58, .12);
+    font: inherit;
+    font-size: 17px;
+  }
+
+  .partner-search-shell input::placeholder { color: #7a8492; }
+
+  .partner-search-shell input:focus {
+    border-color: var(--green);
+    outline: 3px solid rgba(22, 54, 116, .14);
+  }
+
+  .partner-search-icon {
+    position: absolute;
+    top: 50%;
+    right: 17px;
+    width: 22px;
+    height: 22px;
+    transform: translateY(-50%);
+    color: var(--navy);
+    pointer-events: none;
+  }
+
+  .partner-search-icon::before {
+    position: absolute;
+    width: 13px;
+    height: 13px;
+    border: 2px solid currentColor;
+    border-radius: 50%;
+    content: "";
+  }
+
+  .partner-search-icon::after {
+    position: absolute;
+    right: 1px;
+    bottom: 2px;
+    width: 9px;
+    height: 2px;
+    transform: rotate(45deg);
+    transform-origin: right center;
+    background: currentColor;
+    content: "";
+  }
+
+  .partner-auth-note {
+    grid-column: 2;
+    margin: 0;
+    padding: 13px 15px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  .partner-explorer { min-width: 0; }
+
+  .partner-explorer.search-active {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
+    gap: 22px;
+    align-items: start;
+  }
+
+  .partner-groups,
+  .partner-results { min-width: 0; }
+
+  .partner-subheading {
+    margin: 0 0 13px;
+    color: var(--navy);
+    font-size: 17px;
+  }
+
+  .partner-explorer.search-active .group-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  .partner-results {
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 4px 16px rgba(21, 36, 58, .08);
+  }
+
+  .partner-results[hidden] { display: none; }
+
+  .partner-results-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: baseline;
+    padding: 16px 17px 13px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .partner-results-header h3 { margin: 0; font-size: 17px; }
+  .partner-results-count { color: var(--muted); font-size: 12px; white-space: nowrap; }
+
+  .partner-result-list {
+    display: grid;
+    max-height: 660px;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+
+  .partner-result-card {
+    display: grid;
+    grid-template-columns: 50px minmax(0, 1fr);
+    gap: 13px;
+    align-items: center;
+    padding: 15px 17px;
+    border-bottom: 1px solid #e8edf3;
+    color: inherit;
+    text-decoration: none;
+    transition: background .15s ease;
+  }
+
+  .partner-result-card:last-child { border-bottom: 0; }
+  .partner-result-card:hover { background: #f3f6fa; }
+
+  .partner-result-avatar {
+    display: flex;
+    width: 50px;
+    height: 50px;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 50%;
+    background: var(--green);
+    color: #fff;
+    font-size: 20px;
+    font-weight: bold;
+  }
+
+  .partner-result-avatar img { width: 100%; height: 100%; object-fit: cover; }
+  .partner-result-card h4 { margin: 0 0 4px; color: var(--navy); font-size: 16px; }
+  .partner-result-card p { margin: 2px 0; color: var(--muted); font-size: 12px; line-height: 1.35; }
+  .partner-result-card .partner-result-keywords {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--green);
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+  .partner-result-empty { margin: 0; padding: 24px 17px; color: var(--muted); line-height: 1.5; }
+
   .portal-meta {
     margin: 3px 0;
     color: var(--muted);
@@ -478,6 +651,11 @@
 
     .group-list,
     .meeting-list { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 0; }
+
+    .partners-toolbar { grid-template-columns: 1fr; gap: 14px; }
+    .partner-auth-note { grid-column: 1; }
+    .partner-explorer.search-active { grid-template-columns: 1fr; }
+    .partner-results { grid-row: 1; }
   }
 
   @media (max-width: 700px) {
@@ -575,6 +753,10 @@
     .group-list,
     .meeting-list { grid-template-columns: 1fr; }
 
+    .partner-search-shell input { min-height: 50px; font-size: 16px; }
+    .partner-explorer.search-active .group-list { grid-template-columns: 1fr; }
+    .partner-result-list { max-height: none; }
+
     .month-filter-row { align-items: stretch; }
     .month-browser { flex: 1; }
     .month-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -588,12 +770,12 @@
   <header class="portal-intro">
     <p class="eyebrow">Netværk</p>
     <h1 class="portal-title">Partnerportalen</h1>
-    <p class="portal-description">Hold dig opdateret om kommende møder og find dine netværksgrupper.</p>
+    <p class="portal-description">Hold dig opdateret om kommende møder, og find partnere på tværs af netværksgrupperne.</p>
   </header>
 
   <div class="mobile-section-tabs" role="tablist" aria-label="Vælg indhold">
     <button class="active" type="button" role="tab" aria-selected="true" aria-controls="meetings-panel" data-mobile-section="meetings">Møder</button>
-    <button type="button" role="tab" aria-selected="false" aria-controls="groups-panel" data-mobile-section="groups">Grupper</button>
+    <button type="button" role="tab" aria-selected="false" aria-controls="groups-panel" data-mobile-section="groups">Partnere</button>
   </div>
 
   <div class="portal-grid">
@@ -622,10 +804,33 @@
     </section>
 
     <section class="portal-panel" id="groups-panel" role="tabpanel" data-mobile-panel="groups" hidden>
-      <h2 class="portal-heading">Grupper</h2>
+      <div class="partners-toolbar">
+        <div>
+          <h2 class="portal-heading">Partnere</h2>
+          <p class="partners-toolbar-copy">Find en gruppe, eller søg efter partnere på tværs af alle grupper.</p>
+        </div>
+        <label class="partner-search-shell" id="partner-search-shell" hidden>
+          <span hidden>Søg efter partner</span>
+          <input id="partner-search" type="search" aria-label="Find en partner med et søgeord" placeholder="Find en partner med et søgeord" autocomplete="off" disabled>
+          <span class="partner-search-icon" aria-hidden="true"></span>
+        </label>
+        <p class="partner-auth-note" id="partner-auth-note" hidden>Log ind for at søge blandt partnerprofiler.</p>
+      </div>
 
-      <div class="group-list" id="group-list"></div>
-      <nav class="pagination" id="group-pagination" aria-label="Gruppesider"></nav>
+      <div class="partner-explorer" id="partner-explorer">
+        <div class="partner-groups">
+          <h3 class="partner-subheading">Grupper</h3>
+          <div class="group-list" id="group-list"></div>
+          <nav class="pagination" id="group-pagination" aria-label="Gruppesider"></nav>
+        </div>
+        <aside class="partner-results" id="partner-results" aria-live="polite" hidden>
+          <header class="partner-results-header">
+            <h3>Søgeresultater</h3>
+            <span class="partner-results-count" id="partner-results-count"></span>
+          </header>
+          <div class="partner-result-list" id="partner-result-list"></div>
+        </aside>
+      </div>
     </section>
   </div>
 </div>
@@ -636,7 +841,8 @@
   var selectedMeetingStatus = "upcoming";
   var selectedMeetingMonth = "all";
   var meetingMonthKeys = [], monthWindowStart = 0;
-  var pageSize = 8, groupPage = 1, meetingPage = 1, groupRows = [], allowedGroupIds = [];
+  var pageSize = 8, groupPage = 1, meetingPage = 1, groupRows = [], allowedGroupIds = [], partnerRows = [];
+  var partnerSearchInput = document.getElementById("partner-search");
   function monthWindowSize() {
     return window.matchMedia("(max-width: 700px)").matches ? 2 : 6;
   }
@@ -670,6 +876,66 @@
       return allowedGroupIds.includes(group.id)?'<a href="gruppe.html?id='+encodeURIComponent(group.id)+'" class="group-card">'+body+'</a>':'<article class="group-card">'+body+'</article>';
     }).join(""):'<p class="portal-meta">Der er ingen grupper endnu.</p>';
     renderPagination("group-pagination", groupPage, groupRows.length, function(page) { groupPage = page; renderGroupPage(); });
+  }
+  function normalizedSearchText(value) {
+    return String(value || "").toLocaleLowerCase("da-DK").normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "").replace(/æ/g, "ae").replace(/ø/g, "o").replace(/å/g, "a");
+  }
+  function partnerResultCard(partner) {
+    var name = partner.name || "Partner";
+    var avatar = partner.profileImageUrl
+      ? '<img src="'+PortalData.escape(partner.profileImageUrl)+'" alt="" loading="lazy" decoding="async">'
+      : PortalData.escape(name.charAt(0).toUpperCase());
+    var details = [partner.company, partner.industry].filter(Boolean).join(" · ");
+    var keywords = [partner.labels, partner.groupNames].filter(Boolean).join(" · ");
+    return '<a class="partner-result-card" href="partner-profil.html?id='+encodeURIComponent(partner.id)+'">' +
+      '<span class="partner-result-avatar">'+avatar+'</span><span><h4>'+PortalData.escape(name)+'</h4>' +
+      (details?'<p>'+PortalData.escape(details)+'</p>':'') +
+      (keywords?'<p class="partner-result-keywords">'+PortalData.escape(keywords)+'</p>':'') +
+      '</span></a>';
+  }
+  function partnerSearchScore(partner, terms) {
+    var values = [partner.name, partner.company, partner.industry, partner.labels, partner.groupNames, partner.biography]
+      .map(normalizedSearchText);
+    var weights = [70, 50, 40, 35, 30, 10], score = 0;
+    for (var termIndex = 0; termIndex < terms.length; termIndex += 1) {
+      var term = terms[termIndex], best = 0;
+      values.forEach(function (value, valueIndex) {
+        if (!value.includes(term)) return;
+        var words = value.split(/[^a-z0-9]+/).filter(Boolean);
+        var termScore = value === term
+          ? weights[valueIndex] + 30
+          : (words.some(function (word) { return word.startsWith(term); }) ? weights[valueIndex] + 15 : weights[valueIndex] / 4);
+        best = Math.max(best, termScore);
+      });
+      if (!best) return -1;
+      score += best;
+    }
+    return score;
+  }
+  function renderPartnerSearch() {
+    var rawQuery = partnerSearchInput.value.trim();
+    var explorer = document.getElementById("partner-explorer");
+    var results = document.getElementById("partner-results");
+    if (!rawQuery) {
+      explorer.classList.remove("search-active");
+      results.hidden = true;
+      return;
+    }
+    var terms = normalizedSearchText(rawQuery).split(/\s+/).filter(Boolean);
+    var matches = partnerRows.map(function (partner) {
+      return { partner:partner, score:partnerSearchScore(partner, terms) };
+    }).filter(function (match) {
+      return match.score >= 0;
+    }).sort(function (a, b) {
+      return b.score - a.score || String(a.partner.name || "").localeCompare(String(b.partner.name || ""), "da-DK");
+    }).map(function (match) { return match.partner; });
+    explorer.classList.add("search-active");
+    results.hidden = false;
+    document.getElementById("partner-results-count").textContent = matches.length + (matches.length === 1 ? " partner" : " partnere");
+    document.getElementById("partner-result-list").innerHTML = matches.length
+      ? matches.map(partnerResultCard).join("")
+      : '<p class="partner-result-empty">Ingen partnere matcher “'+PortalData.escape(rawQuery)+'”. Prøv et navn, en virksomhed, branche, gruppe eller et andet søgeord.</p>';
   }
   function effectiveMeetingStatus(meeting) {
     if (meeting.status === "cancelled") return "cancelled";
@@ -767,6 +1033,19 @@
     }).join("");
     renderGroupPage();
     applyMeetingFilters(true);
+    if (session.loggedIn) {
+      document.getElementById("partner-search-shell").hidden = false;
+      partnerSearchInput.disabled = false;
+      PortalData.partners().then(function (partners) {
+        partnerRows = partners;
+        renderPartnerSearch();
+      }).catch(function () {
+        partnerSearchInput.disabled = true;
+        partnerSearchInput.placeholder = "Partnersøgningen kunne ikke hentes";
+      });
+    } else {
+      document.getElementById("partner-auth-note").hidden = false;
+    }
   });
   PortalData.meetings().then(function (meetings) {
     var sorted = sortMeetings(meetings);
@@ -800,6 +1079,7 @@
     });
   });
   document.getElementById("meeting-group-filter").addEventListener("change", function () { applyMeetingFilters(true); });
+  partnerSearchInput.addEventListener("input", renderPartnerSearch);
   document.querySelectorAll("[data-mobile-section]").forEach(function (button) {
     button.addEventListener("click", function () {
       setMobileSection(button.dataset.mobileSection);
