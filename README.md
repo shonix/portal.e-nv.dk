@@ -63,6 +63,11 @@ files and other runtime data must not be committed.
 - Automated portal emails include a link to the recipient's profile settings.
   Users can disable group-bulletin emails there. Meeting invitations and account
   emails are transactional and are not controlled by that bulletin preference.
+- Every member can create a categorized post on the bulletin board of their own
+  groups. The other active group members receive an automatic email unless they
+  disabled bulletin emails. Authors can edit, close, reopen and delete their own
+  posts; administrators can manage every post. Posts can have an optional expiry
+  date, and non-administrators are limited to five new posts per hour.
 - Users can permanently delete their own account from the bottom of the profile
   page after confirming their current password. Related personal portal data is
   removed, and the final administrator account cannot delete itself.
@@ -229,6 +234,7 @@ the migrations that have not previously been applied, in numeric order:
 | 022 | External meeting-guest invitations, hashed RSVP tokens, delivery status and responses |
 | 023 | Account lifecycle for profiles created before invitation (`unclaimed`, `invited`, `active`) |
 | 024 | Partner-profile cover-picture metadata |
+| 025 | Member-created group bulletins with title, category, status and expiry |
 
 The project does not yet have a migration ledger. Record the last applied
 migration as part of the deployment notes. Back up the database before applying

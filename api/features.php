@@ -92,6 +92,77 @@ function portalBannerSettings(PDO $pdo): array
     return $settings;
 }
 
+function canPostGroupBulletin(PDO $pdo, int $groupId, int $currentUserId): bool
+{
+    if (($_SESSION['role'] ?? null) === 'admin') return true;
+    $statement = $pdo->prepare(
+        'SELECT 1 FROM group_members WHERE group_id = :group_id AND user_id = :user_id'
+    );
+    $statement->execute(['group_id' => $groupId, 'user_id' => $currentUserId]);
+    return (bool) $statement->fetchColumn();
+}
+
+function requireGroupBulletinManager(PDO $pdo, int $bulletinId, int $currentUserId): array
+{
+    $statement = $pdo->prepare(
+        'SELECT id, group_id, created_by, status FROM group_bulletins WHERE id = :id'
+    );
+    $statement->execute(['id' => $bulletinId]);
+    $bulletin = $statement->fetch();
+    if (!$bulletin) respond(['error' => 'Opslaget findes ikke.'], 404);
+    if (($_SESSION['role'] ?? null) !== 'admin' && (int) ($bulletin['created_by'] ?? 0) !== $currentUserId) {
+        respond(['error' => 'Du kan kun administrere dine egne opslag.'], 403);
+    }
+    return $bulletin;
+}
+
+function validateBulletinExpiry(mixed $value): ?string
+{
+    $expiry = trim((string) ($value ?? ''));
+    if ($expiry === '') return null;
+    $date = DateTimeImmutable::createFromFormat('!Y-m-d', $expiry, new DateTimeZone('Europe/Copenhagen'));
+    if (!$date || $date->format('Y-m-d') !== $expiry) {
+        respond(['error' => 'Vælg en gyldig udløbsdato.'], 422);
+    }
+    $today = new DateTimeImmutable('today', new DateTimeZone('Europe/Copenhagen'));
+    if ($date < $today) respond(['error' => 'Udløbsdatoen kan ikke ligge i fortiden.'], 422);
+    return $expiry;
+}
+
+function bulletinEmailDelivery(PDO $pdo, array $config, array $group, int $authorId, string $authorName, string $title, string $category, string $message): array
+{
+    $recipientStatement = $pdo->prepare(
+        "SELECT DISTINCT u.email
+         FROM group_members gm
+         JOIN users u ON u.id = gm.user_id
+         WHERE gm.group_id = :group_id
+           AND u.id <> :author_id
+           AND u.bulletin_emails_enabled
+           AND u.account_status = 'active'
+         ORDER BY u.email"
+    );
+    $recipientStatement->execute(['group_id' => (int) $group['id'], 'author_id' => $authorId]);
+    $recipients = $recipientStatement->fetchAll(PDO::FETCH_COLUMN);
+    $categoryLabels = ['request' => 'Søger hjælp', 'offer' => 'Tilbyder hjælp', 'other' => 'Andet'];
+    $groupName = (string) preg_replace('/[\r\n]+/', ' ', (string) $group['name']);
+    $safeTitle = (string) preg_replace('/[\r\n]+/', ' ', $title);
+    $subject = 'Nyt opslag i ' . $groupName . ': ' . $safeTitle;
+    $mailBody = "Hej\n\n{$authorName} har oprettet et nyt opslag i {$groupName}.\n\n" .
+        "{$safeTitle}\n" . ($categoryLabels[$category] ?? 'Opslag') . "\n\n" . $message .
+        "\n\nSe opslaget på gruppens opslagstavle:\n" .
+        portalUrl('gruppe.html?id=' . urlencode((string) $group['id'])) .
+        "\n\nDu kan fravælge opslagstavle-e-mails under Min profil:\n" .
+        portalUrl('min-profil.html') .
+        "\n\nVenlig hilsen\nEjendomsnetværket";
+    $sent = 0;
+    $failed = 0;
+    foreach ($recipients as $recipient) {
+        $mailResult = sendPortalMail($config, (string) $recipient, $subject, $mailBody);
+        $mailResult['sent'] ? $sent++ : $failed++;
+    }
+    return ['total' => count($recipients), 'sent' => $sent, 'failed' => $failed];
+}
+
 if ($method === 'GET' && $action === 'portal-banner') {
     requireLogin();
     respond(['banner' => portalBannerSettings($pdo)]);
@@ -186,98 +257,169 @@ if ($method === 'GET' && $action === 'group-bulletins') {
     $groupId = (int) ($_GET['groupId'] ?? 0);
     if ($groupId <= 0) respond(['error' => 'Group is required.'], 422);
     $statement = $pdo->prepare(
-        'SELECT gb.id::text, gb.message, gb.created_at AS "createdAt",
-                u.email AS "createdByEmail",
-                (
-                    SELECT p.name
-                    FROM partners p
-                    WHERE p.user_id = u.id
-                       OR (p.user_id IS NULL AND LOWER(TRIM(p.email)) = LOWER(TRIM(u.email)))
-                    ORDER BY p.user_id NULLS LAST, p.id
-                    LIMIT 1
-                ) AS "createdByName"
+        'SELECT gb.id::text, gb.title, gb.message, gb.category, gb.status,
+                gb.expires_at::text AS "expiresAt", gb.created_at::text AS "createdAt",
+                gb.updated_at::text AS "updatedAt", gb.closed_at::text AS "closedAt",
+                (gb.expires_at IS NOT NULL AND gb.expires_at < CURRENT_DATE) AS "isExpired",
+                u.email AS "createdByEmail", profile.id::text AS "createdByProfileId",
+                profile.name AS "createdByName", profile.company AS "createdByCompany",
+                profile.profile_picture_stored_name AS "createdByPicture",
+                (gb.created_by = :permission_user_id OR :is_admin = 1) AS "canEdit",
+                (gb.created_by = :permission_user_id OR :is_admin = 1) AS "canDelete"
          FROM group_bulletins gb
          LEFT JOIN users u ON u.id = gb.created_by
+         LEFT JOIN LATERAL (
+             SELECT p.id, p.name, p.company, p.profile_picture_stored_name
+             FROM partners p
+             WHERE p.user_id = u.id
+                OR (p.user_id IS NULL AND LOWER(TRIM(p.email)) = LOWER(TRIM(u.email)))
+             ORDER BY p.user_id NULLS LAST, p.id
+             LIMIT 1
+         ) profile ON TRUE
          WHERE gb.group_id = :group_id
          ORDER BY gb.created_at DESC, gb.id DESC'
     );
-    $statement->execute(['group_id' => $groupId]);
-    respond(['bulletins' => $statement->fetchAll()]);
+    $statement->execute([
+        'permission_user_id' => $userId,
+        'is_admin' => ($_SESSION['role'] ?? null) === 'admin' ? 1 : 0,
+        'group_id' => $groupId,
+    ]);
+    $rows = $statement->fetchAll();
+    foreach ($rows as &$row) {
+        $row['canEdit'] = (bool) $row['canEdit'];
+        $row['canDelete'] = (bool) $row['canDelete'];
+        $row['isExpired'] = (bool) $row['isExpired'];
+        $row['createdByImageUrl'] = !empty($row['createdByPicture']) && !empty($row['createdByProfileId'])
+            ? 'api/index.php?action=profile-picture&partnerId=' . urlencode((string) $row['createdByProfileId'])
+            : null;
+        unset($row['createdByPicture']);
+    }
+    unset($row);
+    respond([
+        'bulletins' => $rows,
+        'canPost' => canPostGroupBulletin($pdo, $groupId, $userId),
+    ]);
 }
 
-if ($method === 'POST' && $action === 'admin-group-bulletins') {
-    requireAdmin();
+if ($method === 'POST' && in_array($action, ['group-bulletins', 'admin-group-bulletins'], true)) {
+    requireLogin();
     $body = requestBody();
-    required($body, ['groupId', 'message']);
+    required($body, ['groupId', 'title', 'message']);
     $groupId = (int) $body['groupId'];
+    $title = trim((string) $body['title']);
     $message = trim((string) $body['message']);
-    if (strlen($message) > 4000) respond(['error' => 'Beskeden er for lang.'], 422);
+    $category = (string) ($body['category'] ?? 'request');
+    $expiresAt = validateBulletinExpiry($body['expiresAt'] ?? null);
+    if ($title === '' || strlen($title) > 140) respond(['error' => 'Overskriften skal være mellem 1 og 140 tegn.'], 422);
+    if ($message === '' || strlen($message) > 4000) respond(['error' => 'Beskrivelsen skal være mellem 1 og 4000 tegn.'], 422);
+    if (!in_array($category, ['request', 'offer', 'other'], true)) respond(['error' => 'Vælg en gyldig kategori.'], 422);
 
     $groupStatement = $pdo->prepare('SELECT id::text, name FROM groups WHERE id = :id');
     $groupStatement->execute(['id' => $groupId]);
     $group = $groupStatement->fetch();
     if (!$group) respond(['error' => 'Gruppen findes ikke.'], 404);
+    if (!canPostGroupBulletin($pdo, $groupId, $userId)) {
+        respond(['error' => 'Du skal være medlem af gruppen for at oprette et opslag.'], 403);
+    }
+    if (($_SESSION['role'] ?? null) !== 'admin') {
+        $rateLimit = $pdo->prepare(
+            "SELECT COUNT(*) FROM group_bulletins
+             WHERE created_by = :created_by AND created_at > NOW() - INTERVAL '1 hour'"
+        );
+        $rateLimit->execute(['created_by' => $userId]);
+        if ((int) $rateLimit->fetchColumn() >= 5) {
+            respond(['error' => 'Du kan højst oprette fem opslag i timen. Prøv igen senere.'], 429);
+        }
+    }
 
     $statement = $pdo->prepare(
-        'INSERT INTO group_bulletins (group_id, created_by, message)
-         VALUES (:group_id, :created_by, :message)
-         RETURNING id::text, message, created_at AS "createdAt"'
+        'INSERT INTO group_bulletins (group_id, created_by, title, message, category, expires_at)
+         VALUES (:group_id, :created_by, :title, :message, :category, :expires_at)
+         RETURNING id::text, title, message, category, status, expires_at::text AS "expiresAt",
+                   created_at::text AS "createdAt"'
     );
     $statement->execute([
         'group_id' => $groupId,
         'created_by' => $userId,
+        'title' => $title,
         'message' => $message,
+        'category' => $category,
+        'expires_at' => $expiresAt,
     ]);
     $bulletin = $statement->fetch();
-    $response = ['bulletin' => $bulletin];
-
-    if (($body['sendEmail'] ?? false) === true) {
-        $recipientStatement = $pdo->prepare(
-            "SELECT DISTINCT u.email
-             FROM group_members gm
-             JOIN users u ON u.id = gm.user_id
-             WHERE gm.group_id = :group_id
-               AND u.bulletin_emails_enabled
-               AND u.account_status = 'active'
-             ORDER BY u.email"
-        );
-        $recipientStatement->execute(['group_id' => $groupId]);
-        $recipients = $recipientStatement->fetchAll(PDO::FETCH_COLUMN);
-        $sent = 0;
-        $failed = 0;
-        $groupName = (string) preg_replace('/[\r\n]+/', ' ', (string) $group['name']);
-        $subject = 'Nyt opslag i ' . $groupName;
-        $mailBody = "Hej\n\nDer er kommet et nyt opslag i {$groupName}:\n\n" .
-            $message .
-            "\n\nSe gruppen og opslagstavlen her:\n" .
-            portalUrl('gruppe.html?id=' . urlencode((string) $group['id'])) .
-            "\n\nDu kan fravælge disse e-mails under Min profil:\n" .
-            portalUrl('min-profil.html') .
-            "\n\nVenlig hilsen\nEjendomsnetværket";
-
-        foreach ($recipients as $recipient) {
-            $mailResult = sendPortalMail($config, (string) $recipient, $subject, $mailBody);
-            if ($mailResult['sent']) {
-                $sent++;
-            } else {
-                $failed++;
-            }
-        }
-
-        $response['emailDelivery'] = [
-            'total' => count($recipients),
-            'sent' => $sent,
-            'failed' => $failed,
-        ];
-    }
-
-    respond($response, 201);
+    $authorStatement = $pdo->prepare(
+        "SELECT COALESCE(NULLIF(TRIM(p.name), ''), u.email)
+         FROM users u
+         LEFT JOIN LATERAL (
+             SELECT candidate.name FROM partners candidate
+             WHERE candidate.user_id = u.id
+                OR (candidate.user_id IS NULL AND LOWER(TRIM(candidate.email)) = LOWER(TRIM(u.email)))
+             ORDER BY candidate.user_id NULLS LAST, candidate.id LIMIT 1
+         ) p ON TRUE
+         WHERE u.id = :id"
+    );
+    $authorStatement->execute(['id' => $userId]);
+    $authorName = (string) ($authorStatement->fetchColumn() ?: 'Et medlem');
+    respond([
+        'bulletin' => $bulletin,
+        'emailDelivery' => bulletinEmailDelivery($pdo, $config, $group, $userId, $authorName, $title, $category, $message),
+    ], 201);
 }
 
-if ($method === 'POST' && $action === 'admin-delete-group-bulletin') {
-    requireAdmin();
+if ($method === 'POST' && $action === 'update-group-bulletin') {
+    requireLogin();
+    $body = requestBody();
+    required($body, ['bulletinId', 'title', 'message']);
+    $bulletinId = (int) $body['bulletinId'];
+    requireGroupBulletinManager($pdo, $bulletinId, $userId);
+    $title = trim((string) $body['title']);
+    $message = trim((string) $body['message']);
+    $category = (string) ($body['category'] ?? 'request');
+    $expiresAt = validateBulletinExpiry($body['expiresAt'] ?? null);
+    if ($title === '' || strlen($title) > 140) respond(['error' => 'Overskriften skal være mellem 1 og 140 tegn.'], 422);
+    if ($message === '' || strlen($message) > 4000) respond(['error' => 'Beskrivelsen skal være mellem 1 og 4000 tegn.'], 422);
+    if (!in_array($category, ['request', 'offer', 'other'], true)) respond(['error' => 'Vælg en gyldig kategori.'], 422);
+    $statement = $pdo->prepare(
+        'UPDATE group_bulletins
+         SET title = :title, message = :message, category = :category, expires_at = :expires_at, updated_at = NOW()
+         WHERE id = :id
+         RETURNING id::text, title, message, category, status, expires_at::text AS "expiresAt",
+                   updated_at::text AS "updatedAt"'
+    );
+    $statement->execute([
+        'id' => $bulletinId,
+        'title' => $title,
+        'message' => $message,
+        'category' => $category,
+        'expires_at' => $expiresAt,
+    ]);
+    respond(['bulletin' => $statement->fetch()]);
+}
+
+if ($method === 'POST' && $action === 'set-group-bulletin-status') {
+    requireLogin();
+    $body = requestBody();
+    required($body, ['bulletinId', 'status']);
+    $bulletinId = (int) $body['bulletinId'];
+    $status = (string) $body['status'];
+    if (!in_array($status, ['open', 'closed'], true)) respond(['error' => 'Ugyldig status.'], 422);
+    requireGroupBulletinManager($pdo, $bulletinId, $userId);
+    $statement = $pdo->prepare(
+        "UPDATE group_bulletins
+         SET status = :status, updated_at = NOW(),
+             closed_at = CASE WHEN :closed_status = 'closed' THEN NOW() ELSE NULL END
+         WHERE id = :id
+         RETURNING id::text, status, closed_at::text AS \"closedAt\""
+    );
+    $statement->execute(['id' => $bulletinId, 'status' => $status, 'closed_status' => $status]);
+    respond(['bulletin' => $statement->fetch()]);
+}
+
+if ($method === 'POST' && in_array($action, ['delete-group-bulletin', 'admin-delete-group-bulletin'], true)) {
+    requireLogin();
     $body = requestBody();
     required($body, ['bulletinId']);
+    requireGroupBulletinManager($pdo, (int) $body['bulletinId'], $userId);
     $statement = $pdo->prepare('DELETE FROM group_bulletins WHERE id = :id');
     $statement->execute(['id' => (int) $body['bulletinId']]);
     respond(['ok' => true]);

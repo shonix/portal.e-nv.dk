@@ -70,8 +70,14 @@ CREATE TABLE IF NOT EXISTS group_bulletins (
   id BIGSERIAL PRIMARY KEY,
   group_id BIGINT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
   created_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+  title TEXT NOT NULL,
   message TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  category TEXT NOT NULL DEFAULT 'request' CHECK (category IN ('request', 'offer', 'other')),
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+  expires_at DATE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  closed_at TIMESTAMPTZ
 );
 
 CREATE TABLE IF NOT EXISTS portal_settings (
@@ -124,6 +130,7 @@ CREATE INDEX IF NOT EXISTS users_account_status_idx ON users (account_status);
 CREATE INDEX IF NOT EXISTS group_members_user_id_idx ON group_members (user_id);
 CREATE INDEX IF NOT EXISTS group_members_group_id_idx ON group_members (group_id);
 CREATE INDEX IF NOT EXISTS group_bulletins_group_idx ON group_bulletins (group_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS group_bulletins_group_status_idx ON group_bulletins (group_id, status, created_at DESC);
 CREATE INDEX IF NOT EXISTS meeting_groups_group_id_idx ON meeting_groups (group_id);
 
 CREATE TABLE IF NOT EXISTS partner_labels (
